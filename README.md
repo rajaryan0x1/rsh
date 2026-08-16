@@ -19,7 +19,7 @@ A Unix-style shell written from scratch in Rust.
 
 * **Rust**
 * **Cargo**
-* **Linux / Unix**
+* **Linux (BTW I USE ARCH)**
 * **Neovim + LazyVim**
 
 ## Running Locally
