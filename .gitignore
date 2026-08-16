@@ -1,0 +1,11 @@
+# Rust
+/target
+
+# Neovim
+*.swp
+*.swo
+*.nvimlog
+
+# LazyVim / Neovim local files
+.lazy.lua
+
