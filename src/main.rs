@@ -9,6 +9,7 @@ use std::process::{Command, Stdio};
 struct ParsedCommand {
     args: Vec<String>,
     stdout_file: Option<String>,
+    stderr_file: Option<String>,
 }
 
 const BUILTINS: [&str; 5] = ["type", "echo", "exit", "pwd", "cd"];
@@ -69,6 +70,7 @@ fn parse_command(command: &str) -> ParsedCommand {
 
     let mut args = Vec::new();
     let mut stdout_file = None;
+    let mut stderr_file = None;
 
     let mut i = 0;
 
@@ -82,6 +84,16 @@ fn parse_command(command: &str) -> ParsedCommand {
                 }
             }
 
+            "2>" => {
+                if i + 1 < parts.len() {
+
+                
+                    stderr_file = Some(parts[i+1].clone());
+                    i+=2;
+                    continue;
+                }
+            }
+
             _ => {}
         }
 
@@ -89,7 +101,7 @@ fn parse_command(command: &str) -> ParsedCommand {
         i += 1;
     }
 
-    ParsedCommand { args, stdout_file }
+    ParsedCommand { args, stdout_file , stderr_file }
 }
 
 fn find_exe(cmd: &str) -> Option<PathBuf> {
@@ -145,6 +157,53 @@ where
         close(saved_stdout);
     }
 }
+
+fn redirect_stderr<F>(error_file: &str, func: F) 
+where 
+    F: FnOnce(),
+{
+
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(error_file)
+        .expect("failed to open error_file");
+
+    let saved_stderr = unsafe {
+        dup(2)
+    };
+
+    if saved_stderr == -1 {
+        panic!("failed to duplicate stderr");
+    }
+
+    let result = unsafe {
+        dup2(file.as_raw_fd() , 2)
+    };
+    if result ==-1 {
+        panic!("failed to redirect stderr");
+    }
+
+    func();
+
+    let result = unsafe {
+        dup2(saved_stderr, 2)
+    };
+
+    if result == -1 {
+        panic!("failed to restore stderr");
+    }
+
+
+    unsafe {
+        close(saved_stderr);
+    }
+
+}
+
+
+
 
 fn execute_builtin(parts: &ParsedCommand) -> bool {
     match parts.args[0].as_str() {
@@ -230,6 +289,16 @@ fn main() {
         if BUILTINS.contains(&parts.args[0].as_str()) {
             if let Some(output_file) = &parts.stdout_file {
                 redirect_stdout(output_file, || {
+                if let Some(error_file) = &parts.stderr_file {
+                    redirect_stderr(error_file, || {
+                        execute_builtin(&parts);
+                    });
+                }else {
+                    execute_builtin(&parts);
+                }
+                });
+            } else if let Some(error_file) = &parts.stderr_file {
+                redirect_stderr(error_file, || {
                     execute_builtin(&parts);
                 });
             } else {
@@ -238,7 +307,6 @@ fn main() {
 
             continue;
         }
-
         let cmd = parts.args[0].as_str();
 
         if find_exe(cmd).is_some() {
@@ -257,6 +325,18 @@ fn main() {
                 command.stdout(Stdio::from(file));
             }
 
+
+            if let Some(error_file) = parts.stderr_file {
+                let file = OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(error_file)
+                    .expect("failed to open error file");
+
+                command.stderr(Stdio::from(file));
+            }
+
             command
                 .status()
                 .expect("failed to execute the command");
@@ -265,3 +345,4 @@ fn main() {
         }
     }
 }
+
