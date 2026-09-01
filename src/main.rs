@@ -6,6 +6,13 @@ use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use rustyline::completion::{Completer, Pair};
+use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::validate::{ValidationContext, ValidationResult, Validator};
+use rustyline::{Context, Editor, Helper};
+
 struct ParsedCommand {
     args: Vec<String>,
     stdout_file: Option<String>,
@@ -16,11 +23,102 @@ struct ParsedCommand {
 
 const BUILTINS: [&str; 5] = ["type", "echo", "exit", "pwd", "cd"];
 
-unsafe extern "C" {
-    fn dup(fd: i32) -> i32;
-    fn dup2(oldfd: i32, newfd: i32) -> i32;
-    fn close(fd: i32) -> i32;
+struct RshHelper;
+
+impl Completer for RshHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        let before_cursor = &line[..pos];
+
+        // Only complete the command itself for now.
+        // Example:
+        // ech<TAB> -> echo<space>
+        if before_cursor.contains(char::is_whitespace) {
+            return Ok((pos, Vec::new()));
+        }
+
+        let prefix = before_cursor;
+        let mut matches = Vec::new();
+
+        // Builtin completion
+      
+        for builtin in BUILTINS {
+            if builtin.starts_with(prefix) {
+                matches.push(Pair {
+                    display: builtin.to_string(),
+                    replacement: format!("{} ", builtin),
+                });
+            }
+        }
+
+       
+        // Executable completion
+        
+        let path = env::var("PATH").unwrap_or_default();
+
+        for dir in path.split(':') {
+            let entries = match std::fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+
+                let name = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(name) => name,
+                    None => continue,
+                };
+
+                if !name.starts_with(prefix) {
+                    continue;
+                }
+
+                if find_exe(name).is_none() {
+                    continue;
+                }
+
+                // Avoid duplicate entries
+                if matches
+                    .iter()
+                    .any(|m: &Pair| m.replacement.trim_end() == name)
+                {
+                    continue;
+                }
+
+                matches.push(Pair {
+                    display: name.to_string(),
+                    replacement: format!("{} ", name),
+                });
+            }
+        }
+
+        Ok((0, matches))
+    }
 }
+
+impl Hinter for RshHelper {
+    type Hint = String;
+}
+
+impl Highlighter for RshHelper {}
+
+impl Validator for RshHelper {
+    fn validate(
+        &self,
+        _ctx: &mut ValidationContext<'_>,
+    ) -> rustyline::Result<ValidationResult> {
+        Ok(ValidationResult::Valid(None))
+    }
+}
+
+impl Helper for RshHelper {}
 
 fn parse_command(command: &str) -> ParsedCommand {
     let mut parts = Vec::new();
@@ -247,9 +345,7 @@ where
 fn execute_builtin(parts: &ParsedCommand) -> bool {
     match parts.args[0].as_str() {
         "exit" => {
-            if parts.args.len() == 1
-                || (parts.args.len() == 2 && parts.args[1] == "0")
-            {
+            if parts.args.len() == 1 || (parts.args.len() == 2 && parts.args[1] == "0") {
                 std::process::exit(0);
             }
 
@@ -303,15 +399,32 @@ fn execute_builtin(parts: &ParsedCommand) -> bool {
 }
 
 fn main() {
+    let mut rl = Editor::new().unwrap();
+
+    rl.set_helper(Some(RshHelper));
+
     loop {
-        print!("$ ");
-        io::stdout().flush().unwrap();
+        let input = match rl.readline("$ ") {
+            Ok(line) => {
+                rl.add_history_entry(line.as_str()).unwrap();
+                line
+            }
 
-        let mut input = String::new();
+            Err(ReadlineError::Interrupted) => {
+                println!();
+                continue;
+            }
 
-        if io::stdin().read_line(&mut input).unwrap() == 0 {
-            break;
-        }
+            Err(ReadlineError::Eof) => {
+                println!();
+                break;
+            }
+
+            Err(err) => {
+                eprintln!("readline error: {err}");
+                break;
+            }
+        };
 
         let command = input.trim();
 
@@ -325,7 +438,6 @@ fn main() {
             continue;
         }
 
-        // Builtin commands
         if BUILTINS.contains(&parts.args[0].as_str()) {
             if let Some(output_file) = &parts.stdout_file {
                 redirect_stdout(output_file, parts.stdout_append, || {
@@ -348,7 +460,6 @@ fn main() {
             continue;
         }
 
-        // External commands
         let cmd = parts.args[0].as_str();
 
         if find_exe(cmd).is_some() {
@@ -406,3 +517,12 @@ fn main() {
         }
     }
 }
+
+// ffi stuff
+
+unsafe extern "C" {
+    fn dup(fd: i32) -> i32;
+    fn dup2(oldfd: i32, newfd: i32) -> i32;
+    fn close(fd: i32) -> i32;
+}
+
