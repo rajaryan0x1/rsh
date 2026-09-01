@@ -16,8 +16,18 @@ A Unix-style shell written from scratch in Rust.
   * `pwd`
   * `type`
 * Command parsing
+
+  * Single quotes
+  * Double quotes
+  * Backslash escaping
+  * Whitespace-separated arguments
+* Command history
+* TAB command completion
+
+  * Built-in command completion
+  * Executable completion through `$PATH`
 * Executable lookup through `$PATH`
-* Process creation and management
+* Process creation and execution
 * Standard output redirection
 
   * `>`
@@ -29,9 +39,18 @@ A Unix-style shell written from scratch in Rust.
   * `2>`
   * `2>>`
 * File creation and append-mode redirection
-* Unix file descriptor manipulation using `dup`, `dup2`, and `close`
+* Unix file descriptor manipulation using
 
-> More functionality is being added as development continues.
+  * `dup`
+  * `dup2`
+  * `close`
+* Basic terminal signal/EOF handling
+
+  * `Ctrl-C`
+  * `Ctrl-D`
+
+> More shell functionality is being added as development continues.
+
 
 ## Tech Stack
 
