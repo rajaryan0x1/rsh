@@ -11,7 +11,7 @@ use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
 use rustyline::hint::Hinter;
 use rustyline::validate::{ValidationContext, ValidationResult, Validator};
-use rustyline::{Context, Editor, Helper};
+use rustyline::{CompletionType, Config, Context, Editor, Helper};
 
 struct ParsedCommand {
     args: Vec<String>,
@@ -47,7 +47,6 @@ impl Completer for RshHelper {
         let mut matches = Vec::new();
 
         // Builtin completion
-      
         for builtin in BUILTINS {
             if builtin.starts_with(prefix) {
                 matches.push(Pair {
@@ -57,9 +56,7 @@ impl Completer for RshHelper {
             }
         }
 
-       
         // Executable completion
-        
         let path = env::var("PATH").unwrap_or_default();
 
         for dir in path.split(':') {
@@ -98,6 +95,9 @@ impl Completer for RshHelper {
                 });
             }
         }
+
+        // Alphabetical order for the listing
+        matches.sort_by(|a, b| a.display.cmp(&b.display));
 
         Ok((0, matches))
     }
@@ -399,7 +399,13 @@ fn execute_builtin(parts: &ParsedCommand) -> bool {
 }
 
 fn main() {
-    let mut rl = Editor::new().unwrap();
+    // List mode: first TAB beeps when there are multiple matches,
+    // second TAB prints them all and redraws the prompt.
+    let config = Config::builder()
+        .completion_type(CompletionType::List)
+        .build();
+
+    let mut rl = Editor::with_config(config).unwrap();
 
     rl.set_helper(Some(RshHelper));
 
@@ -525,4 +531,3 @@ unsafe extern "C" {
     fn dup2(oldfd: i32, newfd: i32) -> i32;
     fn close(fd: i32) -> i32;
 }
-
