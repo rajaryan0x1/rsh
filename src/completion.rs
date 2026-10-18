@@ -113,11 +113,17 @@ fn complete_filename(prefix: &str) -> Vec<Pair> {
         .into_iter()
         .flatten()
         .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| name.starts_with(filename_prefix))
-        .map(|name| Pair {
-            display: name.clone(),
-            replacement: format!("{directory}{name} "),
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            if !name.starts_with(filename_prefix) {
+                return None;
+            }
+
+            let suffix = if entry.path().is_dir() { "/" } else { " " };
+            Some(Pair {
+                display: name.clone(),
+                replacement: format!("{directory}{name}{suffix}"),
+            })
         })
         .collect();
 
@@ -262,5 +268,73 @@ mod tests {
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].replacement, "Cargo.toml ");
+    }
+
+    #[test]
+    fn directory_completion_allows_continued_filename_completion() {
+        let directory = TestDirectory::new();
+        let prefix = format!("{}/path/t", directory.root.display());
+        let line = format!("cat {prefix}");
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (start, matches) = RshHelper.complete(&line, line.len(), &context).unwrap();
+
+        assert_eq!(start, 4);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/", directory.nested.display())
+        );
+
+        let line = format!("cat {}file", matches[0].replacement);
+        let (start, matches) = RshHelper.complete(&line, line.len(), &context).unwrap();
+
+        assert_eq!(start, 4);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/file.txt ", directory.nested.display())
+        );
+    }
+
+    #[test]
+    fn absolute_directory_completion_appends_a_slash_without_a_space() {
+        let directory = TestDirectory::new();
+        let absolute = env::current_dir().unwrap().join(&directory.root);
+        let matches = complete_filename(&format!("{}/path/t", absolute.display()));
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/path/to/", absolute.display())
+        );
+    }
+
+    #[test]
+    fn current_directory_completion_appends_a_slash_to_directories() {
+        let matches = complete_filename("src");
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacement, "src/");
+    }
+
+    #[test]
+    fn directory_symlinks_can_be_completed_and_traversed() {
+        let directory = TestDirectory::new();
+        std::os::unix::fs::symlink("path/to", directory.root.join("shortcut")).unwrap();
+        let matches = complete_filename(&format!("{}/short", directory.root.display()));
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/shortcut/", directory.root.display())
+        );
+
+        let matches = complete_filename(&format!("{}file", matches[0].replacement));
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/shortcut/file.txt ", directory.root.display())
+        );
     }
 }
