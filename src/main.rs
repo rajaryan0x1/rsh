@@ -39,10 +39,13 @@ impl Completer for RshHelper {
         // Only complete the command itself for now.
         // Example:
         // ech<TAB> -> echo<space>
-        if before_cursor.contains(char::is_whitespace) {
-            return Ok((pos, Vec::new()));
+        //
+        if let Some(idx) = before_cursor.rfind(char::is_whitespace) {
+            let start = idx + 1;
+            let prefix = &before_cursor[start..];
+            return Ok((start, complete_filename(prefix)));
         }
-
+       
         let prefix = before_cursor;
         let mut matches = Vec::new();
 
@@ -248,6 +251,22 @@ fn find_exe(cmd: &str) -> Option<PathBuf> {
     }
 
     None
+}
+fn complete_filename(prefix: &str) -> Vec<Pair> {
+    let mut matches: Vec<Pair> = std::fs::read_dir(".")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| name.starts_with(prefix))
+        .map(|name| Pair {
+            display: name.clone(),
+            replacement: format!("{} ", name),
+        })
+        .collect();
+
+    matches.sort_by(|a, b| a.display.cmp(&b.display));
+    matches
 }
 
 fn redirect_stdout<F>(output_file: &str, append: bool, func: F)
