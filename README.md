@@ -143,11 +143,28 @@ still displays the error on the terminal while redirecting standard output to `o
 ```text
 rsh/
 ├── src/
-│   └── ...
+│   ├── main.rs          # Module declarations and startup
+│   ├── shell.rs         # Interactive loop and command history
+│   ├── parser.rs        # Argument parsing and redirection syntax
+│   ├── builtins.rs      # Built-in commands
+│   ├── completion.rs    # Command and filename completion
+│   ├── executable.rs    # Executable lookup through PATH
+│   ├── execution.rs     # Command dispatch and process execution
+│   ├── redirection.rs   # File opening and stream redirection
+│   └── todo.md
+├── tests/
+│   └── shell.rs         # Shell integration tests
 ├── Cargo.toml
 ├── Cargo.lock
-├── test.txt
 └── README.md
+```
+
+The interactive loop parses each command and passes it to the execution module, which dispatches built-ins or launches external processes. Completion and execution share executable lookup, and both execution paths use the redirection module.
+
+Run the parser, completion, and shell integration tests with:
+
+```bash
+cargo test
 ```
 
 ## What I'm Learning
