@@ -103,15 +103,21 @@ impl Validator for RshHelper {
 impl Helper for RshHelper {}
 
 fn complete_filename(prefix: &str) -> Vec<Pair> {
-    let mut matches: Vec<Pair> = std::fs::read_dir(".")
+    let (directory, filename_prefix) = match prefix.rfind('/') {
+        Some(index) => prefix.split_at(index + 1),
+        None => ("", prefix),
+    };
+    let search_directory = if directory.is_empty() { "." } else { directory };
+
+    let mut matches: Vec<Pair> = std::fs::read_dir(search_directory)
         .into_iter()
         .flatten()
         .flatten()
         .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| name.starts_with(prefix))
+        .filter(|name| name.starts_with(filename_prefix))
         .map(|name| Pair {
             display: name.clone(),
-            replacement: format!("{} ", name),
+            replacement: format!("{directory}{name} "),
         })
         .collect();
 
@@ -121,9 +127,42 @@ fn complete_filename(prefix: &str) -> Vec<Pair> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use rustyline::history::DefaultHistory;
 
     use super::*;
+
+    static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+
+    struct TestDirectory {
+        root: PathBuf,
+        nested: PathBuf,
+    }
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let root = PathBuf::from("target").join(format!(
+                "rsh-completion-test-{}-{}",
+                std::process::id(),
+                NEXT_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            let nested = root.join("path/to");
+            fs::create_dir_all(&nested).unwrap();
+            for name in ["other.txt", "first.txt", "file.txt"] {
+                fs::write(nested.join(name), "").unwrap();
+            }
+            Self { root, nested }
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.root).unwrap();
+        }
+    }
 
     #[test]
     fn command_completion_uses_the_prefix_before_the_cursor() {
@@ -147,5 +186,81 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[0].display < pair[1].display)
         );
+    }
+
+    #[test]
+    fn nested_relative_completion_replaces_the_entire_argument() {
+        let directory = TestDirectory::new();
+        let prefix = format!("{}/file", directory.nested.display());
+        let line = format!("cat {prefix} ignored");
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (start, matches) = RshHelper
+            .complete(&line, 4 + prefix.len(), &context)
+            .unwrap();
+
+        assert_eq!(start, 4);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].display, "file.txt");
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/file.txt ", directory.nested.display())
+        );
+    }
+
+    #[test]
+    fn absolute_path_completion_preserves_the_directory() {
+        let directory = TestDirectory::new();
+        let absolute = env::current_dir().unwrap().join(&directory.nested);
+        let matches = complete_filename(&format!("{}/file", absolute.display()));
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/file.txt ", absolute.display())
+        );
+    }
+
+    #[test]
+    fn nested_matches_are_filtered_and_sorted() {
+        let directory = TestDirectory::new();
+        let matches = complete_filename(&format!("{}/fi", directory.nested.display()));
+
+        let replacements: Vec<_> = matches
+            .iter()
+            .map(|pair| pair.replacement.as_str())
+            .collect();
+        assert_eq!(
+            replacements,
+            [
+                format!("{}/file.txt ", directory.nested.display()),
+                format!("{}/first.txt ", directory.nested.display()),
+            ]
+        );
+    }
+
+    #[test]
+    fn trailing_slash_completes_all_entries_in_the_directory() {
+        let directory = TestDirectory::new();
+        let matches = complete_filename(&format!("{}/", directory.nested.display()));
+
+        let names: Vec<_> = matches.iter().map(|pair| pair.display.as_str()).collect();
+        assert_eq!(names, ["file.txt", "first.txt", "other.txt"]);
+    }
+
+    #[test]
+    fn missing_directories_and_unmatched_prefixes_have_no_candidates() {
+        let directory = TestDirectory::new();
+
+        assert!(complete_filename(&format!("{}/missing/f", directory.nested.display())).is_empty());
+        assert!(complete_filename(&format!("{}/unknown", directory.nested.display())).is_empty());
+    }
+
+    #[test]
+    fn current_directory_completion_does_not_add_a_directory_prefix() {
+        let matches = complete_filename("Cargo.t");
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacement, "Cargo.toml ");
     }
 }
