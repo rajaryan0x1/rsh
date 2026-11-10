@@ -24,6 +24,24 @@ where
     }
 }
 
+pub(crate) fn apply_child_redirections(parts: &ParsedCommand) {
+    if let Some(output_file) = &parts.stdout_file {
+        duplicate_file_onto(output_file, parts.stdout_append, 1);
+    }
+
+    if let Some(error_file) = &parts.stderr_file {
+        duplicate_file_onto(error_file, parts.stderr_append, 2);
+    }
+}
+
+fn duplicate_file_onto(path: &str, append: bool, fd: i32) {
+    let file = open_file(path, append).expect("failed to open redirection file");
+
+    if unsafe { dup2(file.as_raw_fd(), fd) } == -1 {
+        panic!("failed to redirect file descriptor {fd}");
+    }
+}
+
 pub(crate) fn configure_external_redirection(command: &mut Command, parts: &ParsedCommand) {
     if let Some(output_file) = &parts.stdout_file {
         let file = open_file(output_file, parts.stdout_append).expect("failed to open output file");

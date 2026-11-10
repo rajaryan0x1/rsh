@@ -55,6 +55,19 @@ impl Drop for Shell {
 }
 
 #[test]
+fn echo_keeps_literal_backslashes_and_empty_quoted_arguments() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "echo \"hello\\nworld\"\necho \"hello'test'\\\\'example\"\necho \"a\" \"\" \"b\"\necho \"hello\\\"insidequotes\"test\\\"\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "hello\\nworld\nhello'test'\\'example\na  b\nhello\"insidequotestest\"\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn builtins_and_external_commands_preserve_quoted_arguments() {
     let shell = Shell::new();
     let output = shell.run(
@@ -105,6 +118,73 @@ fn cd_changes_the_shell_directory_and_uses_home() {
             shell.dir.display(),
             shell.dir.display()
         )
+    );
+}
+
+#[test]
+fn pipelines_connect_stdout_to_stdin_across_multiple_stages() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "echo hello | cat\necho hello | cat | cat\necho hello|cat\necho 'keep | this' | cat\necho escaped\\|pipe | cat\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "hello\nhello\nhello\nkeep | this\nescaped|pipe\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn pipeline_redirections_apply_to_the_command_they_are_written_on() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "echo hello | cat > piped\necho visible\necho stored > kept | cat\nsh -c 'echo out; echo err >&2' 2> stage-err | cat\necho from-pipe | sh -c 'cat >&2' 2> piped-err\nexit\n",
+    );
+    assert_eq!(shell.read("piped"), "hello\n");
+    assert_eq!(shell.read("kept"), "stored\n");
+    assert_eq!(shell.read("stage-err"), "err\n");
+    assert_eq!(shell.read("piped-err"), "from-pipe\n");
+    assert_eq!(output.stdout, b"visible\nout\n");
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn pipelines_larger_than_the_pipe_buffer_do_not_deadlock() {
+    let shell = Shell::new();
+    let line = "hello from the pipe\n";
+    let data = line.repeat(4000);
+    fs::write(shell.dir.join("input"), &data).unwrap();
+    let output = shell.run("cat input | cat | cat > output\nexit\n");
+    assert_eq!(shell.read("output"), data);
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn pipeline_stages_do_not_change_the_parent_shell() {
+    let shell = Shell::new();
+    fs::create_dir(shell.dir.join("child")).unwrap();
+    let output = shell.run(
+        "cd child | pwd\npwd\necho hello | exit\necho still-running\nmissing-pipeline-command | cat\necho after-missing\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!(
+            "{dir}\n{dir}\nstill-running\nmissing-pipeline-command: command not found\nafter-missing\n",
+            dir = shell.dir.display()
+        )
+    );
+}
+
+#[test]
+fn an_empty_pipeline_stage_reports_a_syntax_error_and_continues() {
+    let shell = Shell::new();
+    let output = shell.run("echo hello | | cat\necho after\nexit\n");
+    assert_eq!(output.stdout, b"after\n");
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("syntax error near unexpected token '|'")
     );
 }
 

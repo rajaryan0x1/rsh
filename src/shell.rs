@@ -3,7 +3,7 @@ use rustyline::{CompletionType, Config, Editor};
 
 use crate::completion::RshHelper;
 use crate::execution::execute;
-use crate::parser::parse_command;
+use crate::parser::parse_pipeline;
 
 pub(crate) fn run() {
     // List mode: first TAB beeps when there are multiple matches,
@@ -45,7 +45,13 @@ pub(crate) fn run() {
             continue;
         }
 
-        let parts = parse_command(command);
-        execute(&parts);
+        let commands = match parse_pipeline(command) {
+            Ok(commands) => commands,
+            Err(message) => {
+                eprintln!("rsh: {message}");
+                continue;
+            }
+        };
+        execute(&commands);
     }
 }

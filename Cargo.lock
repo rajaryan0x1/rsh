@@ -42,16 +42,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsh"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "rustyline",
- "thiserror",
-]
-
-[[package]]
 name = "endian-type"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -137,6 +127,16 @@ checksum = "3b4431027dcd37fc2a73ef740b5f233aa805897935b8bce0195e41bbf9a3289a"
 dependencies = [
  "endian-type",
  "nibble_vec",
+]
+
+[[package]]
+name = "rsh"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "rustyline",
+ "thiserror",
 ]
 
 [[package]]

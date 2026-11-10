@@ -2,7 +2,7 @@
 
 A Unix-style shell written from scratch in Rust.
 
-`rsh` is a minimal shell focused on understanding how command-line shells work at the system level. The project is built with Rust on Linux, with an emphasis on command parsing, process execution, Unix file descriptors, and standard stream redirection.
+`rsh` is a minimal shell focused on understanding how command-line shells work at the system level. The project is built with Rust on Linux, with an emphasis on command parsing, process execution, Unix file descriptors, pipes, and standard stream redirection.
 
 ## Features
 
@@ -38,6 +38,11 @@ A Unix-style shell written from scratch in Rust.
 
   * `2>`
   * `2>>`
+* Pipelines
+
+  * `|`
+  * Multiple stages
+  * Per-command file redirection
 * File creation and append-mode redirection
 * Unix file descriptor manipulation using
 
@@ -138,6 +143,36 @@ ls nonexistent >> output.txt
 
 still displays the error on the terminal while redirecting standard output to `output.txt`.
 
+## Pipes
+
+`|` connects the standard output of one command to the standard input of the next. Spaces around the operator are optional, and a pipeline can have more than two stages:
+
+```bash
+echo hello | cat
+echo hello|cat
+echo hello | cat | cat
+```
+
+A quoted or escaped `|` is an ordinary character:
+
+```bash
+echo 'hello | cat'
+echo hello \| cat
+```
+
+File redirections belong to the command they are written on. The first pipeline below writes `hello` to `output.txt`. The second writes `hello` to `output.txt` and leaves `cat` with an empty standard input:
+
+```bash
+echo hello | cat > output.txt
+echo hello > output.txt | cat
+```
+
+Every stage runs in its own process. `cd` and `exit` inside a pipeline do not change the shell that is waiting for that pipeline to finish. An empty stage is a syntax error:
+
+```bash
+echo hello | | cat
+```
+
 ## Project Structure
 
 ```text
@@ -145,11 +180,11 @@ rsh/
 ├── src/
 │   ├── main.rs          # Module declarations and startup
 │   ├── shell.rs         # Interactive loop and command history
-│   ├── parser.rs        # Argument parsing and redirection syntax
+│   ├── parser.rs        # Argument parsing, pipelines, and redirection syntax
 │   ├── builtins.rs      # Built-in commands
 │   ├── completion.rs    # Command and filename completion
 │   ├── executable.rs    # Executable lookup through PATH
-│   ├── execution.rs     # Command dispatch and process execution
+│   ├── execution.rs     # Command dispatch, pipelines, and process execution
 │   ├── redirection.rs   # File opening and stream redirection
 │   └── todo.md
 ├── tests/
@@ -159,7 +194,7 @@ rsh/
 └── README.md
 ```
 
-The interactive loop parses each command and passes it to the execution module, which dispatches built-ins or launches external processes. Completion and execution share executable lookup, and both execution paths use the redirection module.
+The interactive loop parses each line and passes its pipeline to the execution module. A single command is dispatched in the current shell. A pipeline forks one child per stage, connects them with `pipe`, and waits until every child exits. Completion and execution share executable lookup, and both execution paths use the redirection module.
 
 Run the parser, completion, and shell integration tests with:
 
@@ -180,6 +215,8 @@ Building a shell provides hands-on experience with:
 * Unix file descriptors
 * `dup`, `dup2`, and `close`
 * File I/O and redirection
+* Pipes between processes
+* `pipe`, `fork`, `exec`, and `waitpid`
 * Rust ownership and error handling
 * Executable discovery through `$PATH`
 * How shells interact with the operating system
