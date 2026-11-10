@@ -22,10 +22,13 @@ A Unix-style shell written from scratch in Rust.
   * Backslash escaping
   * Whitespace-separated arguments
 * Command history
-* TAB command completion
+* TAB completion
 
   * Built-in command completion
   * Executable completion through `$PATH`
+  * Filename completion, including nested paths and later arguments
+  * Directory completion with a trailing `/`
+  * Multiple matches, the longest shared prefix, and no match
 * Executable lookup through `$PATH`
 * Process creation and execution
 * Standard output redirection

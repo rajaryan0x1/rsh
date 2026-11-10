@@ -119,9 +119,19 @@ fn complete_filename(prefix: &str) -> Vec<Pair> {
                 return None;
             }
 
-            let suffix = if entry.path().is_dir() { "/" } else { " " };
+            // A finished directory stays open for another completion. A finished
+            // file gets a space. The slash and space are not part of an
+            // ambiguous prefix, so several matches can still share the text
+            // typed so far.
+            let is_directory = entry.path().is_dir();
+            let suffix = if is_directory { "/" } else { " " };
+            let display = if is_directory {
+                format!("{name}/")
+            } else {
+                name.clone()
+            };
             Some(Pair {
-                display: name.clone(),
+                display,
                 replacement: format!("{directory}{name}{suffix}"),
             })
         })
@@ -319,6 +329,68 @@ mod tests {
     }
 
     #[test]
+    fn multiple_matches_list_files_and_directories_in_order() {
+        let directory = TestDirectory::new();
+        fs::create_dir(directory.nested.join("data")).unwrap();
+        let matches = complete_filename(&format!("{}/", directory.nested.display()));
+
+        let listed: Vec<_> = matches.iter().map(|pair| pair.display.as_str()).collect();
+        assert_eq!(listed, ["data/", "file.txt", "first.txt", "other.txt"]);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/data/", directory.nested.display())
+        );
+        assert!(matches[1].replacement.ends_with("file.txt "));
+    }
+
+    #[test]
+    fn partial_completion_uses_the_longest_shared_prefix() {
+        let directory = TestDirectory::new();
+        fs::create_dir(directory.root.join("xyz_apple")).unwrap();
+        fs::create_dir(directory.root.join("xyz_apple_banana")).unwrap();
+        fs::write(directory.root.join("xyz_apple_banana_cherry.txt"), "").unwrap();
+
+        let matches = complete_filename(&format!("{}/xyz_", directory.root.display()));
+        assert_eq!(
+            longest_common_prefix(&matches),
+            format!("{}/xyz_apple", directory.root.display())
+        );
+
+        let matches = complete_filename(&format!("{}/xyz_apple_", directory.root.display()));
+        assert_eq!(
+            longest_common_prefix(&matches),
+            format!("{}/xyz_apple_banana", directory.root.display())
+        );
+
+        let matches = complete_filename(&format!("{}/xyz_apple_banana_", directory.root.display()));
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/xyz_apple_banana_cherry.txt ", directory.root.display())
+        );
+    }
+
+    #[test]
+    fn later_arguments_complete_independently() {
+        let directory = TestDirectory::new();
+        let first = format!("{}/other.txt", directory.nested.display());
+        let second = format!("{}/file", directory.nested.display());
+        let line = format!("cat {first} {second} ignored");
+        let cursor = 4 + first.len() + 1 + second.len();
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (start, matches) = RshHelper.complete(&line, cursor, &context).unwrap();
+
+        assert_eq!(start, 4 + first.len() + 1);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].display, "file.txt");
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/file.txt ", directory.nested.display())
+        );
+    }
+
+    #[test]
     fn directory_symlinks_can_be_completed_and_traversed() {
         let directory = TestDirectory::new();
         std::os::unix::fs::symlink("path/to", directory.root.join("shortcut")).unwrap();
@@ -336,5 +408,15 @@ mod tests {
             matches[0].replacement,
             format!("{}/shortcut/file.txt ", directory.root.display())
         );
+    }
+
+    fn longest_common_prefix(matches: &[Pair]) -> String {
+        let mut prefix = matches[0].replacement.clone();
+        for candidate in &matches[1..] {
+            while !candidate.replacement.starts_with(&prefix) {
+                prefix.pop();
+            }
+        }
+        prefix
     }
 }
