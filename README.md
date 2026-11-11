@@ -15,6 +15,7 @@ A Unix-style shell written from scratch in Rust.
   * `exit`
   * `pwd`
   * `type`
+  * `complete`
 * Command parsing
 
   * Single quotes
@@ -29,6 +30,7 @@ A Unix-style shell written from scratch in Rust.
   * Filename completion, including nested paths and later arguments
   * Directory completion with a trailing `/`
   * Multiple matches, the longest shared prefix, and no match
+  * Programmable completion through `complete -C`, `complete -p`, and `complete -r`
 * Executable lookup through `$PATH`
 * Process creation and execution
 * Standard output redirection
@@ -185,7 +187,8 @@ rsh/
 │   ├── shell.rs         # Interactive loop and command history
 │   ├── parser.rs        # Argument parsing, pipelines, and redirection syntax
 │   ├── builtins.rs      # Built-in commands
-│   ├── completion.rs    # Command and filename completion
+│   ├── completion.rs    # Command, filename, and programmable completion
+│   ├── programmable.rs  # complete builtin and completer processes
 │   ├── executable.rs    # Executable lookup through PATH
 │   ├── execution.rs     # Command dispatch, pipelines, and process execution
 │   ├── redirection.rs   # File opening and stream redirection

@@ -16,3 +16,16 @@
 * [x] Partial completions
 * [x] Multi-argument completions
 
+## Programmable Completion
+
+* [x] Register complete builtin
+* [x] Printing missing specifications
+* [x] Displaying registered specifications
+* [x] Single completion
+* [x] Handling no completions
+* [x] Passing command-line arguments
+* [x] Passing environment variables
+* [x] Multiple completer candidates
+* [x] Longest common prefix
+* [x] Unregister a completion
+
