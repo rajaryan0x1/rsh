@@ -47,7 +47,7 @@ pub(crate) fn candidates(line: &str, pos: usize) -> Option<Vec<String>> {
         specs.get(&words.command)?.clone()
     };
 
-    Some(single_candidate(&completer, &words))
+    Some(single_candidate(&completer, &words, line, pos))
 }
 
 struct CompletionWords {
@@ -83,11 +83,18 @@ fn completion_words(before: &str) -> CompletionWords {
     }
 }
 
-fn single_candidate(completer: &str, words: &CompletionWords) -> Vec<String> {
+fn single_candidate(
+    completer: &str,
+    words: &CompletionWords,
+    line: &str,
+    pos: usize,
+) -> Vec<String> {
     let Ok(output) = Command::new(completer)
         .arg(&words.command)
         .arg(&words.current)
         .arg(&words.previous)
+        .env("COMP_LINE", line)
+        .env("COMP_POINT", pos.to_string())
         .stderr(Stdio::null())
         .output()
     else {

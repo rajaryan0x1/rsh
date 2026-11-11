@@ -426,6 +426,31 @@ mod tests {
     }
 
     #[test]
+    fn completers_receive_comp_line_and_comp_point() {
+        let directory = TestDirectory::new();
+        let recorded = directory.root.join("environment");
+        let completer = write_executable(
+            &directory.root,
+            "env",
+            &format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$COMP_LINE\" \"$COMP_POINT\" > {}\nprintf '%s\\n' clone\n",
+                shell_single_quote(&recorded)
+            ),
+        );
+        let _registered = Registered::new("fossil", &completer);
+        let line = "fossil che";
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (_start, matches) = RshHelper.complete(line, line.len(), &context).unwrap();
+
+        assert_eq!(matches[0].replacement, "clone ");
+        assert_eq!(
+            fs::read_to_string(recorded).unwrap(),
+            format!("{line}\n{}\n", line.len())
+        );
+    }
+
+    #[test]
     fn completers_receive_the_command_current_word_and_previous_word() {
         let directory = TestDirectory::new();
         let arguments = directory.root.join("arguments");
