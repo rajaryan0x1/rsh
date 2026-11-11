@@ -38,7 +38,10 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
             true
         }
 
-        "complete" => true,
+        "complete" => {
+            crate::programmable::execute_complete(&args[1..]);
+            true
+        }
 
         "type" => {
             if args.len() != 2 {
