@@ -77,6 +77,19 @@ fn complete_reports_a_missing_specification() {
 }
 
 #[test]
+fn complete_prints_registered_specifications() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "complete  -C  /tmp/git.py  git\ncomplete -p git\ncomplete  -C  /tmp/docker.py  docker\ncomplete -p docker\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "complete -C '/tmp/git.py' git\ncomplete -C '/tmp/docker.py' docker\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn echo_keeps_literal_backslashes_and_empty_quoted_arguments() {
     let shell = Shell::new();
     let output = shell.run(
