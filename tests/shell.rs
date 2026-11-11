@@ -77,6 +77,17 @@ fn complete_reports_a_missing_specification() {
 }
 
 #[test]
+fn complete_unregisters_a_specification() {
+    let shell = Shell::new();
+    let output = shell.run("complete -C /tmp/git.py git\ncomplete -r git\ncomplete -p git\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "complete: git: no completion specification\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn complete_prints_registered_specifications() {
     let shell = Shell::new();
     let output = shell.run(

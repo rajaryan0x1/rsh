@@ -426,6 +426,28 @@ mod tests {
     }
 
     #[test]
+    fn unregistering_a_completion_restores_filename_completion() {
+        let directory = TestDirectory::new();
+        fs::write(directory.nested.join("xyz.txt"), "").unwrap();
+        let completer = write_executable(&directory.root, "none", "#!/bin/sh\nexit 0\n");
+        let registered = Registered::new("bk", &completer);
+        let line = format!("bk {}/xy", directory.nested.display());
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (_start, matches) = RshHelper.complete(&line, line.len(), &context).unwrap();
+        assert!(matches.is_empty());
+
+        drop(registered);
+        let (start, matches) = RshHelper.complete(&line, line.len(), &context).unwrap();
+        assert_eq!(start, "bk ".len());
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacement,
+            format!("{}/xyz.txt ", directory.nested.display())
+        );
+    }
+
+    #[test]
     fn programmable_matches_complete_through_their_common_prefix() {
         let directory = TestDirectory::new();
         let completer = write_executable(
@@ -496,7 +518,7 @@ mod tests {
             ),
         );
         let _registered = Registered::new("fossil", &completer);
-        let line = "fossil che";
+        let line = "fossil cl";
         let history = DefaultHistory::new();
         let context = Context::new(&history);
         let (_start, matches) = RshHelper.complete(line, line.len(), &context).unwrap();

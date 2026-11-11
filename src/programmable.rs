@@ -8,6 +8,7 @@ pub(crate) fn execute_complete(args: &[String]) {
     match args {
         [flag, command] if flag == "-p" => print_specification(command),
         [flag, completer, command] if flag == "-C" => register(command, completer),
+        [flag, command] if flag == "-r" => remove_specification(command),
         _ => {}
     }
 }
@@ -27,7 +28,6 @@ fn register(command: &str, completer: &str) {
         .insert(command.to_string(), completer.to_string());
 }
 
-#[cfg(test)]
 pub(crate) fn remove_specification(command: &str) {
     SPECS
         .lock()
