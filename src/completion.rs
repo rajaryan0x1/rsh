@@ -426,6 +426,42 @@ mod tests {
     }
 
     #[test]
+    fn programmable_matches_complete_through_their_common_prefix() {
+        let directory = TestDirectory::new();
+        let completer = write_executable(
+            &directory.root,
+            "prefix",
+            "#!/bin/sh\nprintf '%s\\n' checkout cherry-pick status\n",
+        );
+        let _registered = Registered::new("darcs", &completer);
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+
+        let line = "darcs c";
+        let (start, matches) = RshHelper.complete(line, line.len(), &context).unwrap();
+        assert_eq!(start, "darcs ".len());
+        assert_eq!(
+            matches
+                .iter()
+                .map(|candidate| candidate.display.as_str())
+                .collect::<Vec<_>>(),
+            ["checkout", "cherry-pick"]
+        );
+        assert_eq!(longest_common_prefix(&matches), "che");
+
+        let line = "darcs chec";
+        let (start, matches) = RshHelper.complete(line, line.len(), &context).unwrap();
+        assert_eq!(start, "darcs ".len());
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacement, "checkout ");
+
+        let line = "darcs cher";
+        let (start, matches) = RshHelper.complete(line, line.len(), &context).unwrap();
+        assert_eq!(start, "darcs ".len());
+        assert_eq!(matches[0].replacement, "cherry-pick ");
+    }
+
+    #[test]
     fn multiple_completer_candidates_are_listed_in_order() {
         let directory = TestDirectory::new();
         let completer = write_executable(
