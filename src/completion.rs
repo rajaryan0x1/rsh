@@ -8,6 +8,7 @@ use rustyline::{Context, Helper};
 
 use crate::builtins::BUILTINS;
 use crate::executable::find_exe;
+use crate::programmable;
 
 pub(crate) struct RshHelper;
 
@@ -25,6 +26,9 @@ impl Completer for RshHelper {
         if let Some(idx) = before_cursor.rfind(char::is_whitespace) {
             let start = idx + 1;
             let prefix = &before_cursor[start..];
+            if let Some(candidates) = programmable::candidates(line, pos) {
+                return Ok((start, completion_pairs(candidates)));
+            }
             return Ok((start, complete_filename(prefix)));
         }
 
@@ -102,6 +106,16 @@ impl Validator for RshHelper {
 
 impl Helper for RshHelper {}
 
+fn completion_pairs(candidates: Vec<String>) -> Vec<Pair> {
+    candidates
+        .into_iter()
+        .map(|candidate| Pair {
+            display: candidate.clone(),
+            replacement: format!("{candidate} "),
+        })
+        .collect()
+}
+
 fn complete_filename(prefix: &str) -> Vec<Pair> {
     let (directory, filename_prefix) = match prefix.rfind('/') {
         Some(index) => prefix.split_at(index + 1),
@@ -144,7 +158,8 @@ fn complete_filename(prefix: &str) -> Vec<Pair> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::PathBuf;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use rustyline::history::DefaultHistory;
@@ -408,6 +423,55 @@ mod tests {
             matches[0].replacement,
             format!("{}/shortcut/file.txt ", directory.root.display())
         );
+    }
+
+    #[test]
+    fn a_registered_completer_supplies_one_argument_candidate() {
+        let directory = TestDirectory::new();
+        let completer = write_executable(
+            &directory.root,
+            "single",
+            "#!/bin/sh\nprintf '%s\\n' clone\n",
+        );
+        let _registered = Registered::new("git", &completer);
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (start, matches) = RshHelper.complete("git ", 4, &context).unwrap();
+
+        assert_eq!(start, 4);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].display, "clone");
+        assert_eq!(matches[0].replacement, "clone ");
+    }
+
+    struct Registered {
+        command: String,
+    }
+
+    impl Registered {
+        fn new(command: &str, completer: &Path) -> Self {
+            crate::programmable::execute_complete(&[
+                "-C".to_string(),
+                completer.display().to_string(),
+                command.to_string(),
+            ]);
+            Self {
+                command: command.to_string(),
+            }
+        }
+    }
+
+    impl Drop for Registered {
+        fn drop(&mut self) {
+            crate::programmable::remove_specification(&self.command);
+        }
+    }
+
+    fn write_executable(directory: &Path, name: &str, body: &str) -> PathBuf {
+        let path = directory.join(name);
+        fs::write(&path, body).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
     }
 
     fn longest_common_prefix(matches: &[Pair]) -> String {
