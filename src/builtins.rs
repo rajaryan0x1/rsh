@@ -2,7 +2,7 @@ use std::env;
 
 use crate::executable::find_exe;
 
-pub(crate) const BUILTINS: [&str; 5] = ["type", "echo", "exit", "pwd", "cd"];
+pub(crate) const BUILTINS: [&str; 6] = ["type", "echo", "exit", "pwd", "cd", "complete"];
 
 pub(crate) fn execute_builtin(args: &[String]) -> bool {
     match args[0].as_str() {
@@ -37,6 +37,8 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
 
             true
         }
+
+        "complete" => true,
 
         "type" => {
             if args.len() != 2 {

@@ -55,6 +55,17 @@ impl Drop for Shell {
 }
 
 #[test]
+fn complete_is_a_shell_builtin() {
+    let shell = Shell::new();
+    let output = shell.run("type complete\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "complete is a shell builtin\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn echo_keeps_literal_backslashes_and_empty_quoted_arguments() {
     let shell = Shell::new();
     let output = shell.run(
