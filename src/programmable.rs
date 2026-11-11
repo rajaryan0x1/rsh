@@ -41,17 +41,56 @@ pub(crate) fn candidates(line: &str, pos: usize) -> Option<Vec<String>> {
         return None;
     }
 
-    let command = before.split_whitespace().next()?;
+    let words = completion_words(before);
     let completer = {
         let specs = SPECS.lock().expect("completion specifications lock");
-        specs.get(command)?.clone()
+        specs.get(&words.command)?.clone()
     };
 
-    Some(single_candidate(&completer))
+    Some(single_candidate(&completer, &words))
 }
 
-fn single_candidate(completer: &str) -> Vec<String> {
-    let Ok(output) = Command::new(completer).stderr(Stdio::null()).output() else {
+struct CompletionWords {
+    command: String,
+    current: String,
+    previous: String,
+}
+
+fn completion_words(before: &str) -> CompletionWords {
+    let trailing_whitespace = before.ends_with(char::is_whitespace);
+    let tokens: Vec<&str> = before.split_whitespace().collect();
+    let command = tokens.first().copied().unwrap_or("").to_string();
+
+    if trailing_whitespace {
+        let previous = tokens.last().copied().unwrap_or("").to_string();
+        return CompletionWords {
+            command,
+            current: String::new(),
+            previous,
+        };
+    }
+
+    let current = tokens.last().copied().unwrap_or("").to_string();
+    let previous = if tokens.len() >= 2 {
+        tokens[tokens.len() - 2].to_string()
+    } else {
+        command.clone()
+    };
+    CompletionWords {
+        command,
+        current,
+        previous,
+    }
+}
+
+fn single_candidate(completer: &str, words: &CompletionWords) -> Vec<String> {
+    let Ok(output) = Command::new(completer)
+        .arg(&words.command)
+        .arg(&words.current)
+        .arg(&words.previous)
+        .stderr(Stdio::null())
+        .output()
+    else {
         return Vec::new();
     };
     if !output.status.success() {

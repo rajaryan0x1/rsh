@@ -426,12 +426,36 @@ mod tests {
     }
 
     #[test]
+    fn completers_receive_the_command_current_word_and_previous_word() {
+        let directory = TestDirectory::new();
+        let arguments = directory.root.join("arguments");
+        let completer = write_executable(
+            &directory.root,
+            "args",
+            &format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$1\" \"$2\" \"$3\" > {}\nprintf '%s\\n' set-url\n",
+                shell_single_quote(&arguments)
+            ),
+        );
+        let _registered = Registered::new("git", &completer);
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (start, matches) = RshHelper
+            .complete("git remote set", "git remote set".len(), &context)
+            .unwrap();
+
+        assert_eq!(start, "git remote ".len());
+        assert_eq!(matches[0].replacement, "set-url ");
+        assert_eq!(fs::read_to_string(arguments).unwrap(), "git\nset\nremote\n");
+    }
+
+    #[test]
     fn an_empty_completer_does_not_fall_back_to_filenames() {
         let directory = TestDirectory::new();
         fs::write(directory.nested.join("xyz.txt"), "").unwrap();
         let completer = write_executable(&directory.root, "none", "#!/bin/sh\nexit 0\n");
-        let _registered = Registered::new("git", &completer);
-        let line = format!("git {}/xy", directory.nested.display());
+        let _registered = Registered::new("hg", &completer);
+        let line = format!("hg {}/xy", directory.nested.display());
         let history = DefaultHistory::new();
         let context = Context::new(&history);
         let (_start, matches) = RshHelper.complete(&line, line.len(), &context).unwrap();
@@ -447,10 +471,10 @@ mod tests {
             "single",
             "#!/bin/sh\nprintf '%s\\n' clone\n",
         );
-        let _registered = Registered::new("git", &completer);
+        let _registered = Registered::new("svn", &completer);
         let history = DefaultHistory::new();
         let context = Context::new(&history);
-        let (start, matches) = RshHelper.complete("git ", 4, &context).unwrap();
+        let (start, matches) = RshHelper.complete("svn ", 4, &context).unwrap();
 
         assert_eq!(start, 4);
         assert_eq!(matches.len(), 1);
@@ -479,6 +503,10 @@ mod tests {
         fn drop(&mut self) {
             crate::programmable::remove_specification(&self.command);
         }
+    }
+
+    fn shell_single_quote(path: &Path) -> String {
+        format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
     }
 
     fn write_executable(directory: &Path, name: &str, body: &str) -> PathBuf {
