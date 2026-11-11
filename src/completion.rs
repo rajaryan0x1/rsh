@@ -426,6 +426,20 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_completer_does_not_fall_back_to_filenames() {
+        let directory = TestDirectory::new();
+        fs::write(directory.nested.join("xyz.txt"), "").unwrap();
+        let completer = write_executable(&directory.root, "none", "#!/bin/sh\nexit 0\n");
+        let _registered = Registered::new("git", &completer);
+        let line = format!("git {}/xy", directory.nested.display());
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (_start, matches) = RshHelper.complete(&line, line.len(), &context).unwrap();
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
     fn a_registered_completer_supplies_one_argument_candidate() {
         let directory = TestDirectory::new();
         let completer = write_executable(

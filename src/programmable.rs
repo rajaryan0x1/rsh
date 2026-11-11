@@ -63,6 +63,7 @@ fn single_candidate(completer: &str) -> Vec<String> {
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect();
+    // An empty completer suppresses filename completion instead of inventing a match.
     if lines.len() == 1 { lines } else { Vec::new() }
 }
 
