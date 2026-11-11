@@ -426,6 +426,28 @@ mod tests {
     }
 
     #[test]
+    fn multiple_completer_candidates_are_listed_in_order() {
+        let directory = TestDirectory::new();
+        let completer = write_executable(
+            &directory.root,
+            "many",
+            "#!/bin/sh\nprintf '%s\\n' status clone\n",
+        );
+        let _registered = Registered::new("cvs", &completer);
+        let history = DefaultHistory::new();
+        let context = Context::new(&history);
+        let (start, matches) = RshHelper.complete("cvs ", 4, &context).unwrap();
+
+        assert_eq!(start, 4);
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].display, "clone");
+        assert_eq!(matches[0].replacement, "clone ");
+        assert_eq!(matches[1].display, "status");
+        assert_eq!(matches[1].replacement, "status ");
+        assert_eq!(longest_common_prefix(&matches), "");
+    }
+
+    #[test]
     fn completers_receive_comp_line_and_comp_point() {
         let directory = TestDirectory::new();
         let recorded = directory.root.join("environment");

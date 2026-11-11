@@ -47,7 +47,7 @@ pub(crate) fn candidates(line: &str, pos: usize) -> Option<Vec<String>> {
         specs.get(&words.command)?.clone()
     };
 
-    Some(single_candidate(&completer, &words, line, pos))
+    Some(read_candidates(&completer, &words, line, pos))
 }
 
 struct CompletionWords {
@@ -83,7 +83,7 @@ fn completion_words(before: &str) -> CompletionWords {
     }
 }
 
-fn single_candidate(
+fn read_candidates(
     completer: &str,
     words: &CompletionWords,
     line: &str,
@@ -104,13 +104,15 @@ fn single_candidate(
         return Vec::new();
     }
 
-    let lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
+    let mut lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter(|line| !line.is_empty())
         .map(str::to_string)
         .collect();
-    // An empty completer suppresses filename completion instead of inventing a match.
-    if lines.len() == 1 { lines } else { Vec::new() }
+    // Only words that extend the text already typed participate in the common prefix.
+    lines.retain(|candidate| candidate.starts_with(&words.current));
+    lines.sort();
+    lines
 }
 
 fn shell_quote(value: &str) -> String {
