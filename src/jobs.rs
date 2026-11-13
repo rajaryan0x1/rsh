@@ -13,6 +13,7 @@ struct Job {
     seq: u64,
     command: String,
     child: Child,
+    finished: bool,
 }
 
 static JOBS: Mutex<Vec<Job>> = Mutex::new(Vec::new());
@@ -58,16 +59,33 @@ pub(crate) fn start(command: &ParsedCommand, text: &str) {
         seq: NEXT_SEQ.fetch_add(1, Ordering::Relaxed),
         command: text.to_string(),
         child,
+        finished: false,
     });
 }
 
 pub(crate) fn list() {
-    let jobs = JOBS.lock().expect("job table lock");
+    let mut jobs = JOBS.lock().expect("job table lock");
+    for job in jobs.iter_mut() {
+        refresh(job);
+    }
     let lines = status_lines(&jobs);
+    // A finished job is reported once, then dropped from the table.
+    jobs.retain(|job| !job.finished);
     drop(jobs);
 
     for line in lines {
         println!("{line}");
+    }
+}
+
+fn refresh(job: &mut Job) {
+    if job.finished {
+        return;
+    }
+
+    match job.child.try_wait() {
+        Ok(Some(_)) | Err(_) => job.finished = true,
+        Ok(None) => {}
     }
 }
 
@@ -77,12 +95,17 @@ fn status_lines(jobs: &[Job]) -> Vec<String> {
     by_number
         .into_iter()
         .map(|job| {
-            format!(
-                "[{}]{}  Running                 {} &",
+            let status = if job.finished { "Done" } else { "Running" };
+            let mut line = format!(
+                "[{}]{}  {status}                 {}",
                 job.number,
                 marker(job, jobs),
                 job.command
-            )
+            );
+            if !job.finished {
+                line.push_str(" &");
+            }
+            line
         })
         .collect()
 }

@@ -55,6 +55,19 @@ impl Drop for Shell {
 }
 
 #[test]
+fn jobs_reports_one_finished_job_and_then_forgets_it() {
+    let shell = Shell::new();
+    let output = shell.run("true &\nsleep 0.05\njobs\njobs\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let reported: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.contains("Done") || line.contains("Running"))
+        .collect();
+    assert_eq!(reported, ["[1]+  Done                 true"]);
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_lists_every_running_job_with_current_and_previous_markers() {
     let shell = Shell::new();
     let output = shell.run("sleep 20 &\njobs\nsleep 30 &\njobs\nsleep 40 &\njobs\nexit\n");
