@@ -55,6 +55,26 @@ impl Drop for Shell {
 }
 
 #[test]
+fn a_background_command_prints_its_own_output() {
+    let shell = Shell::new();
+    let printer = shell.dir.join("printer");
+    fs::write(&printer, "#!/bin/sh\nprintf 'from-background\\n'\n").unwrap();
+    fs::set_permissions(&printer, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = shell.run("printer &\nsleep 0.1\necho from-foreground\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("from-background\n"),
+        "background output missing from {stdout:?}"
+    );
+    assert!(
+        stdout.contains("from-foreground\n"),
+        "foreground output missing from {stdout:?}"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn a_background_command_prints_its_job_number_and_pid() {
     let shell = Shell::new();
     let output = shell.run("sleep 30 &\nexit\n");

@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 use std::os::unix::process::CommandExt;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use crate::executable::find_exe;
@@ -31,6 +31,11 @@ pub(crate) fn start(command: &ParsedCommand) {
     let mut process = Command::new(program);
     process.args(command.args.iter().skip(1));
     process.process_group(0);
+    // The job keeps the shell's streams, so its output appears immediately.
+    process
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
     configure_external_redirection(&mut process, command);
 
     let child = match process.spawn() {
