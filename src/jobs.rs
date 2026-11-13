@@ -52,7 +52,7 @@ pub(crate) fn start(command: &ParsedCommand, text: &str) {
     };
 
     let mut jobs = JOBS.lock().expect("job table lock");
-    let number = jobs.iter().map(|job| job.number).max().unwrap_or(0) + 1;
+    let number = next_number(&jobs);
     println!("[{number}] {}", child.id());
     jobs.push(Job {
         number,
@@ -92,6 +92,14 @@ fn take_lines(finished_only: bool) -> Vec<String> {
     // A finished job is reported once, then dropped from the table.
     jobs.retain(|job| !job.finished);
     lines
+}
+
+fn next_number(jobs: &[Job]) -> u32 {
+    let mut number = 1;
+    while jobs.iter().any(|job| job.number == number) {
+        number += 1;
+    }
+    number
 }
 
 fn refresh(job: &mut Job) {

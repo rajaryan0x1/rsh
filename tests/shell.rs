@@ -55,6 +55,76 @@ impl Drop for Shell {
 }
 
 #[test]
+fn finished_job_numbers_are_reused() {
+    let shell = Shell::new();
+    let fifo = shell.dir.join("fifo");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let releaser = shell.dir.join("releaser");
+    fs::write(&releaser, "#!/bin/sh\nprintf 'x\\n' > \"$1\"\n").unwrap();
+    fs::set_permissions(&releaser, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = shell.run(&format!(
+        "cat {} &\nreleaser {}\nsleep 0.05\nsleep 20 &\njobs\nexit\n",
+        fifo.display(),
+        fifo.display()
+    ));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let jobs: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.starts_with('['))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(jobs.len(), 4, "{stdout}");
+    assert!(jobs[0].starts_with("[1] "), "{stdout}");
+    assert_eq!(
+        jobs[1],
+        format!("[1]+  Done                 cat {}", fifo.display())
+    );
+    assert!(jobs[2].starts_with("[1] "), "{stdout}");
+    assert_ne!(jobs[0], jobs[2], "{stdout}");
+    assert_eq!(jobs[3], "[1]+  Running                 sleep 20 &");
+
+    let kept = Shell::new();
+    let hole = kept.dir.join("hole");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&hole)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let release_hole = kept.dir.join("releaser");
+    fs::write(&release_hole, "#!/bin/sh\nprintf 'x\\n' > \"$1\"\n").unwrap();
+    fs::set_permissions(&release_hole, fs::Permissions::from_mode(0o755)).unwrap();
+    let output = kept.run(&format!(
+        "sleep 30 &\ncat {} &\nreleaser {}\nsleep 0.05\nsleep 15 &\njobs\nexit\n",
+        hole.display(),
+        hole.display()
+    ));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let reported: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.contains("Done") || line.contains("Running"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        reported,
+        [
+            format!("[2]+  Done                 cat {}", hole.display()),
+            "[1]-  Running                 sleep 30 &".to_string(),
+            "[2]+  Running                 sleep 15 &".to_string(),
+        ],
+        "{stdout}"
+    );
+}
+
+#[test]
 fn a_finished_job_is_reported_before_the_next_prompt() {
     let shell = Shell::new();
     let fifo = shell.dir.join("fifo");
