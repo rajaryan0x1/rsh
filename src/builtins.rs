@@ -2,7 +2,7 @@ use std::env;
 
 use crate::executable::find_exe;
 
-pub(crate) const BUILTINS: [&str; 6] = ["type", "echo", "exit", "pwd", "cd", "complete"];
+pub(crate) const BUILTINS: [&str; 7] = ["type", "echo", "exit", "pwd", "cd", "complete", "jobs"];
 
 pub(crate) fn execute_builtin(args: &[String]) -> bool {
     match args[0].as_str() {
@@ -42,6 +42,9 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
             crate::programmable::execute_complete(&args[1..]);
             true
         }
+
+        // An empty job table prints nothing.
+        "jobs" => true,
 
         "type" => {
             if args.len() != 2 {

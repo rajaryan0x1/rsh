@@ -55,6 +55,17 @@ impl Drop for Shell {
 }
 
 #[test]
+fn jobs_is_a_shell_builtin_with_no_jobs_to_report() {
+    let shell = Shell::new();
+    let output = shell.run("type jobs\njobs\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "jobs is a shell builtin\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn complete_is_a_shell_builtin() {
     let shell = Shell::new();
     let output = shell.run("type complete\nexit\n");
