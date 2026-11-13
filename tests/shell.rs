@@ -55,23 +55,87 @@ impl Drop for Shell {
 }
 
 #[test]
+fn a_finished_job_is_reported_before_the_next_prompt() {
+    let shell = Shell::new();
+    let fifo = shell.dir.join("fifo");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let releaser = shell.dir.join("releaser");
+    fs::write(
+        &releaser,
+        "#!/bin/sh\nprintf 'hello\\n'\nprintf 'x\\n' > \"$1\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&releaser, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = shell.run(&format!(
+        "cat {} &\nreleaser {}\njobs\nexit\n",
+        fifo.display(),
+        fifo.display()
+    ));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let hello = stdout.find("hello\n").expect(&stdout);
+    let done = stdout.find("Done").expect(&stdout);
+    assert!(hello < done, "{stdout}");
+    assert_eq!(stdout.matches("Done").count(), 1, "{stdout}");
+    assert_eq!(
+        stdout.lines().find(|line| line.contains("Done")),
+        Some(format!("[1]+  Done                 cat {}", fifo.display()).as_str())
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_reaps_several_finished_jobs_and_updates_markers() {
     let shell = Shell::new();
-    let output = shell.run("sleep 30 &\ntrue &\nfalse &\nsleep 0.05\njobs\njobs\nexit\n");
+    let first = shell.dir.join("first");
+    let second = shell.dir.join("second");
+    for fifo in [&first, &second] {
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    let releaser = shell.dir.join("releaser");
+    fs::write(
+        &releaser,
+        "#!/bin/sh\nprintf 'x\\n' > \"$1\"\nprintf 'x\\n' > \"$2\"\nprintf 'closed\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&releaser, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = shell.run(&format!(
+        "sleep 30 &\ncat {} &\ncat {} &\nreleaser {} {}\njobs\nexit\n",
+        first.display(),
+        second.display(),
+        first.display(),
+        second.display()
+    ));
     let stdout = String::from_utf8(output.stdout).unwrap();
     let reported: Vec<_> = stdout
         .lines()
         .filter(|line| line.contains("Done") || line.contains("Running"))
+        .map(str::to_string)
         .collect();
     assert_eq!(
         reported,
         [
-            "[1]   Running                 sleep 30 &",
-            "[2]-  Done                 true",
-            "[3]+  Done                 false",
-            "[1]+  Running                 sleep 30 &",
+            format!("[2]-  Done                 cat {}", first.display()),
+            format!("[3]+  Done                 cat {}", second.display()),
+            "[1]+  Running                 sleep 30 &".to_string(),
         ]
     );
+    let closed = stdout.find("closed\n").expect(&stdout);
+    let done = stdout.find("Done").expect(&stdout);
+    assert!(closed < done, "{stdout}");
     assert!(output.stderr.is_empty());
 }
 

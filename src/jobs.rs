@@ -64,18 +64,34 @@ pub(crate) fn start(command: &ParsedCommand, text: &str) {
 }
 
 pub(crate) fn list() {
+    let lines = take_lines(false);
+    for line in lines {
+        println!("{line}");
+    }
+}
+
+pub(crate) fn notify() {
+    let lines = take_lines(true);
+    for line in lines {
+        println!("{line}");
+    }
+}
+
+fn take_lines(finished_only: bool) -> Vec<String> {
     let mut jobs = JOBS.lock().expect("job table lock");
     for job in jobs.iter_mut() {
         refresh(job);
     }
-    let lines = status_lines(&jobs);
+    let mut entries: Vec<_> = jobs.iter().collect();
+    entries.sort_by_key(|job| job.number);
+    let lines = entries
+        .into_iter()
+        .filter(|job| !finished_only || job.finished)
+        .map(|job| format_job(job, &jobs))
+        .collect();
     // A finished job is reported once, then dropped from the table.
     jobs.retain(|job| !job.finished);
-    drop(jobs);
-
-    for line in lines {
-        println!("{line}");
-    }
+    lines
 }
 
 fn refresh(job: &mut Job) {
@@ -89,25 +105,18 @@ fn refresh(job: &mut Job) {
     }
 }
 
-fn status_lines(jobs: &[Job]) -> Vec<String> {
-    let mut by_number: Vec<_> = jobs.iter().collect();
-    by_number.sort_by_key(|job| job.number);
-    by_number
-        .into_iter()
-        .map(|job| {
-            let status = if job.finished { "Done" } else { "Running" };
-            let mut line = format!(
-                "[{}]{}  {status}                 {}",
-                job.number,
-                marker(job, jobs),
-                job.command
-            );
-            if !job.finished {
-                line.push_str(" &");
-            }
-            line
-        })
-        .collect()
+fn format_job(job: &Job, jobs: &[Job]) -> String {
+    let status = if job.finished { "Done" } else { "Running" };
+    let mut line = format!(
+        "[{}]{}  {status}                 {}",
+        job.number,
+        marker(job, jobs),
+        job.command
+    );
+    if !job.finished {
+        line.push_str(" &");
+    }
+    line
 }
 
 fn marker(job: &Job, jobs: &[Job]) -> char {
@@ -123,6 +132,9 @@ fn marker(job: &Job, jobs: &[Job]) -> char {
 pub(crate) fn shutdown() {
     let mut jobs = JOBS.lock().expect("job table lock");
     for mut job in jobs.drain(..) {
+        if job.finished {
+            continue;
+        }
         let _ = job.child.kill();
         let _ = job.child.wait();
     }

@@ -17,6 +17,8 @@ pub(crate) fn run() {
     rl.set_helper(Some(RshHelper));
 
     loop {
+        // Finished jobs are reported after the previous command and before this prompt.
+        crate::jobs::notify();
         let input = match rl.readline("$ ") {
             Ok(line) => {
                 rl.add_history_entry(line.as_str()).unwrap();
