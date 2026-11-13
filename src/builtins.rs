@@ -44,8 +44,10 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
             true
         }
 
-        // An empty job table prints nothing.
-        "jobs" => true,
+        "jobs" => {
+            crate::jobs::list();
+            true
+        }
 
         "type" => {
             if args.len() != 2 {

@@ -55,6 +55,21 @@ impl Drop for Shell {
 }
 
 #[test]
+fn jobs_lists_one_running_job() {
+    let shell = Shell::new();
+    let output = shell.run("sleep 30 &\njobs\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let mut lines = stdout.lines();
+    assert!(lines.next().unwrap().starts_with("[1] "));
+    assert_eq!(
+        lines.next(),
+        Some("[1]+  Running                 sleep 30 &")
+    );
+    assert_eq!(lines.next(), None);
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn a_background_command_prints_its_own_output() {
     let shell = Shell::new();
     let printer = shell.dir.join("printer");

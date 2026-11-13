@@ -54,6 +54,6 @@ pub(crate) fn run() {
                 continue;
             }
         };
-        execute(&commands, background);
+        execute(&commands, background, command_text);
     }
 }
