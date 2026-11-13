@@ -63,24 +63,37 @@ pub(crate) fn start(command: &ParsedCommand, text: &str) {
 
 pub(crate) fn list() {
     let jobs = JOBS.lock().expect("job table lock");
-    let current = jobs.iter().map(|job| job.seq).max();
-    let mut entries: Vec<_> = jobs.iter().collect();
-    entries.sort_by_key(|job| job.number);
-
-    let lines: Vec<String> = entries
-        .iter()
-        .map(|job| {
-            let marker = if Some(job.seq) == current { '+' } else { ' ' };
-            format!(
-                "[{}]{marker}  Running                 {} &",
-                job.number, job.command
-            )
-        })
-        .collect();
+    let lines = status_lines(&jobs);
     drop(jobs);
 
     for line in lines {
         println!("{line}");
+    }
+}
+
+fn status_lines(jobs: &[Job]) -> Vec<String> {
+    let mut by_number: Vec<_> = jobs.iter().collect();
+    by_number.sort_by_key(|job| job.number);
+    by_number
+        .into_iter()
+        .map(|job| {
+            format!(
+                "[{}]{}  Running                 {} &",
+                job.number,
+                marker(job, jobs),
+                job.command
+            )
+        })
+        .collect()
+}
+
+fn marker(job: &Job, jobs: &[Job]) -> char {
+    let mut by_age: Vec<_> = jobs.iter().collect();
+    by_age.sort_by_key(|job| job.seq);
+    match by_age.iter().position(|candidate| candidate.seq == job.seq) {
+        Some(index) if index + 1 == by_age.len() => '+',
+        Some(index) if index + 2 == by_age.len() => '-',
+        _ => ' ',
     }
 }
 

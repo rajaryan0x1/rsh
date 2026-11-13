@@ -55,6 +55,29 @@ impl Drop for Shell {
 }
 
 #[test]
+fn jobs_lists_every_running_job_with_current_and_previous_markers() {
+    let shell = Shell::new();
+    let output = shell.run("sleep 20 &\njobs\nsleep 30 &\njobs\nsleep 40 &\njobs\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let listed: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.contains("Running"))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            "[1]+  Running                 sleep 20 &",
+            "[1]-  Running                 sleep 20 &",
+            "[2]+  Running                 sleep 30 &",
+            "[1]   Running                 sleep 20 &",
+            "[2]-  Running                 sleep 30 &",
+            "[3]+  Running                 sleep 40 &",
+        ]
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_lists_one_running_job() {
     let shell = Shell::new();
     let output = shell.run("sleep 30 &\njobs\nexit\n");
