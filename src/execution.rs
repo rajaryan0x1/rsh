@@ -11,7 +11,18 @@ use crate::redirection::{
 
 const SIGPIPE: i32 = 13;
 
-pub(crate) fn execute(commands: &[ParsedCommand]) {
+pub(crate) fn execute(commands: &[ParsedCommand], background: bool) {
+    if background
+        && let [command] = commands
+        && command
+            .args
+            .first()
+            .is_some_and(|program| !BUILTINS.contains(&program.as_str()))
+    {
+        crate::jobs::start(command);
+        return;
+    }
+
     match commands {
         [] => {}
         [command] => execute_command(command),

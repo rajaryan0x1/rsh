@@ -55,6 +55,23 @@ impl Drop for Shell {
 }
 
 #[test]
+fn a_background_command_prints_its_job_number_and_pid() {
+    let shell = Shell::new();
+    let output = shell.run("sleep 30 &\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let mut lines = stdout.lines();
+    let started = lines.next().unwrap();
+    let pid: i32 = started
+        .strip_prefix("[1] ")
+        .unwrap_or_else(|| panic!("job line: {started}"))
+        .parse()
+        .unwrap();
+    assert!(pid > 0);
+    assert_eq!(lines.next(), None);
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_is_a_shell_builtin_with_no_jobs_to_report() {
     let shell = Shell::new();
     let output = shell.run("type jobs\njobs\nexit\n");

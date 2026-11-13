@@ -6,6 +6,38 @@ pub(crate) struct ParsedCommand {
     pub(crate) stderr_append: bool,
 }
 
+pub(crate) fn split_background(input: &str) -> (&str, bool) {
+    let mut in_single_quotes = false;
+    let mut in_double_quotes = false;
+    let mut escaped = false;
+    let mut background_at = None;
+
+    for (index, character) in input.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match character {
+            '\\' if !in_single_quotes => escaped = true,
+            '\'' if !in_double_quotes => in_single_quotes = !in_single_quotes,
+            '"' if !in_single_quotes => in_double_quotes = !in_double_quotes,
+            '&' if !in_single_quotes && !in_double_quotes => background_at = Some(index),
+            _ => {}
+        }
+    }
+
+    let Some(index) = background_at else {
+        return (input, false);
+    };
+
+    if input[index + 1..].chars().all(char::is_whitespace) {
+        (input[..index].trim_end(), true)
+    } else {
+        (input, false)
+    }
+}
+
 pub(crate) fn parse_pipeline(input: &str) -> Result<Vec<ParsedCommand>, &'static str> {
     let segments = split_pipeline(input);
 
@@ -177,7 +209,7 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_command, parse_pipeline};
+    use super::{parse_command, parse_pipeline, split_background};
 
     #[test]
     fn quotes_preserve_whitespace_and_join_adjacent_text() {
@@ -298,6 +330,18 @@ mod tests {
         for input in ["| cat", "echo |", "echo | | cat", "|"] {
             assert!(parse_pipeline(input).is_err(), "{input}");
         }
+    }
+
+    #[test]
+    fn a_trailing_ampersand_marks_the_command_as_background() {
+        assert_eq!(split_background("sleep 500 &"), ("sleep 500", true));
+        assert_eq!(split_background("sleep 500&"), ("sleep 500", true));
+        assert_eq!(
+            split_background("echo \"a & b\""),
+            ("echo \"a & b\"", false)
+        );
+        assert_eq!(split_background(r"echo a \&"), (r"echo a \&", false));
+        assert_eq!(split_background("echo a & b"), ("echo a & b", false));
     }
 
     #[test]
