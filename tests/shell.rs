@@ -309,6 +309,16 @@ fn history_is_a_shell_builtin() {
 }
 
 #[test]
+fn history_lists_every_command_including_itself() {
+    let shell = Shell::new();
+    let output = shell.run("echo one\necho two\nhistory\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("one\ntwo\n"));
+    assert!(stdout.contains("    1  echo one\n    2  echo two\n    3  history\n"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_is_a_shell_builtin_with_no_jobs_to_report() {
     let shell = Shell::new();
     let output = shell.run("type jobs\njobs\nexit\n");

@@ -2,6 +2,7 @@ mod builtins;
 mod completion;
 mod executable;
 mod execution;
+mod history;
 mod jobs;
 mod parser;
 mod programmable;

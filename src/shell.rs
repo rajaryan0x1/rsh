@@ -20,10 +20,7 @@ pub(crate) fn run() {
         // Finished jobs are reported after the previous command and before this prompt.
         crate::jobs::notify();
         let input = match rl.readline("$ ") {
-            Ok(line) => {
-                rl.add_history_entry(line.as_str()).unwrap();
-                line
-            }
+            Ok(line) => line,
 
             Err(ReadlineError::Interrupted) => {
                 println!();
@@ -47,6 +44,9 @@ pub(crate) fn run() {
         if command.is_empty() {
             continue;
         }
+
+        crate::history::record(command);
+        rl.add_history_entry(command).unwrap();
 
         let (command_text, background) = split_background(command);
         let commands = match parse_pipeline(command_text) {

@@ -51,7 +51,10 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
             true
         }
 
-        "history" => true,
+        "history" => {
+            crate::history::list();
+            true
+        }
 
         "type" => {
             if args.len() != 2 {
