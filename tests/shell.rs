@@ -298,6 +298,17 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn history_is_a_shell_builtin() {
+    let shell = Shell::new();
+    let output = shell.run("type history\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "history is a shell builtin\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_is_a_shell_builtin_with_no_jobs_to_report() {
     let shell = Shell::new();
     let output = shell.run("type jobs\njobs\nexit\n");
