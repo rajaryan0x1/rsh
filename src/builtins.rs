@@ -52,7 +52,8 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
         }
 
         "history" => {
-            crate::history::list();
+            let limit = args.get(1).and_then(|arg| arg.parse().ok());
+            crate::history::list(limit);
             true
         }
 

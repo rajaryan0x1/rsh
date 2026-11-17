@@ -319,6 +319,16 @@ fn history_lists_every_command_including_itself() {
 }
 
 #[test]
+fn history_can_list_only_the_most_recent_entries() {
+    let shell = Shell::new();
+    let output = shell.run("echo a\necho b\necho c\nhistory 2\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("    3  echo c\n    4  history 2\n"));
+    assert!(!stdout.contains("echo a"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn jobs_is_a_shell_builtin_with_no_jobs_to_report() {
     let shell = Shell::new();
     let output = shell.run("type jobs\njobs\nexit\n");
