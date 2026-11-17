@@ -319,6 +319,15 @@ fn history_lists_every_command_including_itself() {
 }
 
 #[test]
+fn up_arrow_recalls_the_previous_command() {
+    let transcript = pty_transcript(&["echo first\n", "echo second\n", "\u{1b}[A"]);
+    assert!(
+        transcript.matches("echo second").count() >= 2,
+        "{transcript:?}"
+    );
+}
+
+#[test]
 fn history_can_list_only_the_most_recent_entries() {
     let shell = Shell::new();
     let output = shell.run("echo a\necho b\necho c\nhistory 2\nexit\n");
@@ -517,6 +526,51 @@ fn an_empty_pipeline_stage_reports_a_syntax_error_and_continues() {
             .unwrap()
             .contains("syntax error near unexpected token '|'")
     );
+}
+
+fn pty_transcript(steps: &[&str]) -> String {
+    let script = r#"
+import os, pty, select, signal, sys, time
+binpath = sys.argv[1]
+os.environ["TERM"] = "xterm"
+signal.alarm(8)
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(binpath, [binpath])
+else:
+    def read_quiet():
+        data = b""
+        overall = time.time() + 1.5
+        while time.time() < overall:
+            ready, _, _ = select.select([fd], [], [], 0.15)
+            if not ready:
+                if data:
+                    return data
+                continue
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                return data
+            if not chunk:
+                return data
+            data += chunk
+        return data
+    out = read_quiet()
+    for step in sys.argv[2:]:
+        os.write(fd, step.encode())
+        out += read_quiet()
+    os.kill(pid, signal.SIGTERM)
+    os.waitpid(pid, 0)
+    sys.stdout.buffer.write(out)
+"#;
+    let mut command = Command::new("python3");
+    command.arg("-c").arg(script).arg(env!("CARGO_BIN_EXE_rsh"));
+    for step in steps {
+        command.arg(step);
+    }
+    let output = command.output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8(output.stdout).unwrap()
 }
 
 #[test]

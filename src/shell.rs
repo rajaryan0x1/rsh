@@ -1,5 +1,5 @@
 use rustyline::error::ReadlineError;
-use rustyline::{CompletionType, Config, Editor};
+use rustyline::{Cmd, CompletionType, Config, Editor, KeyCode, KeyEvent, Modifiers};
 
 use crate::completion::RshHelper;
 use crate::execution::execute;
@@ -15,6 +15,7 @@ pub(crate) fn run() {
     let mut rl = Editor::with_config(config).unwrap();
 
     rl.set_helper(Some(RshHelper));
+    rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::NONE), Cmd::PreviousHistory);
 
     loop {
         // Finished jobs are reported after the previous command and before this prompt.
