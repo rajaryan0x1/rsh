@@ -16,6 +16,7 @@ pub(crate) fn run() {
 
     rl.set_helper(Some(RshHelper));
     rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::NONE), Cmd::PreviousHistory);
+    rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::NONE), Cmd::NextHistory);
 
     loop {
         // Finished jobs are reported after the previous command and before this prompt.

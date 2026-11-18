@@ -328,6 +328,21 @@ fn up_arrow_recalls_the_previous_command() {
 }
 
 #[test]
+fn down_arrow_moves_forward_through_history() {
+    let transcript = pty_transcript(&[
+        "echo first\n",
+        "echo second\n",
+        "\u{1b}[A\u{1b}[A\u{1b}[B",
+    ]);
+    let recalled_first = transcript.rfind("echo first").expect(&transcript);
+    let recalled_second = transcript.rfind("echo second").expect(&transcript);
+    assert!(
+        recalled_second > recalled_first,
+        "down arrow should land back on the newer command: {transcript:?}"
+    );
+}
+
+#[test]
 fn history_can_list_only_the_most_recent_entries() {
     let shell = Shell::new();
     let output = shell.run("echo a\necho b\necho c\nhistory 2\nexit\n");
