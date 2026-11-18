@@ -343,6 +343,15 @@ fn down_arrow_moves_forward_through_history() {
 }
 
 #[test]
+fn a_recalled_command_runs_when_enter_is_pressed() {
+    let transcript = pty_transcript(&["echo hello\n", "\u{1b}[A\n"]);
+    assert!(
+        transcript.matches("hello").count() >= 4,
+        "{transcript:?}"
+    );
+}
+
+#[test]
 fn history_can_list_only_the_most_recent_entries() {
     let shell = Shell::new();
     let output = shell.run("echo a\necho b\necho c\nhistory 2\nexit\n");
