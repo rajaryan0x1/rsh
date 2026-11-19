@@ -60,5 +60,8 @@ pub(crate) fn run() {
             }
         };
         execute(&commands, background, command_text);
+        for entry in crate::history::take_for_readline() {
+            rl.add_history_entry(entry).unwrap();
+        }
     }
 }

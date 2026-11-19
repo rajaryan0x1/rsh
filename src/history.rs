@@ -1,15 +1,41 @@
+use std::fs;
 use std::sync::Mutex;
 
 struct History {
     entries: Vec<String>,
+    /// How many entries have already been handed to the line editor.
+    synced: usize,
 }
 
 static HISTORY: Mutex<History> = Mutex::new(History {
     entries: Vec::new(),
+    synced: 0,
 });
 
 pub(crate) fn record(command: &str) {
-    HISTORY.lock().unwrap().entries.push(command.to_string());
+    let mut history = HISTORY.lock().unwrap();
+    history.entries.push(command.to_string());
+    history.synced = history.entries.len();
+}
+
+pub(crate) fn take_for_readline() -> Vec<String> {
+    let mut history = HISTORY.lock().unwrap();
+    let lines = history.entries[history.synced..].to_vec();
+    history.synced = history.entries.len();
+    lines
+}
+
+pub(crate) fn read_file(path: &str) {
+    let Ok(text) = fs::read_to_string(path) else {
+        println!("history: {path}: cannot read");
+        return;
+    };
+    let mut history = HISTORY.lock().unwrap();
+    for line in text.lines() {
+        if !line.is_empty() {
+            history.entries.push(line.to_string());
+        }
+    }
 }
 
 pub(crate) fn list(limit: Option<usize>) {

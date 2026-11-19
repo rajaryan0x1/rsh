@@ -52,8 +52,18 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
         }
 
         "history" => {
-            let limit = args.get(1).and_then(|arg| arg.parse().ok());
-            crate::history::list(limit);
+            match args.get(1).map(String::as_str) {
+                Some("-r") => {
+                    if let Some(path) = args.get(2) {
+                        crate::history::read_file(path);
+                    }
+                }
+                Some(_) => {
+                    let limit = args.get(1).and_then(|arg| arg.parse().ok());
+                    crate::history::list(limit);
+                }
+                None => crate::history::list(None),
+            }
             true
         }
 

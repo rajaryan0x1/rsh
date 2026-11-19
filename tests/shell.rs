@@ -319,6 +319,18 @@ fn history_lists_every_command_including_itself() {
 }
 
 #[test]
+fn history_reads_commands_from_a_file() {
+    let shell = Shell::new();
+    fs::write(shell.dir.join("hist"), "echo from-file\necho another\n").unwrap();
+    let output = shell.run("history -r hist\nhistory\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "    1  history -r hist\n    2  echo from-file\n    3  echo another\n    4  history\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn up_arrow_recalls_the_previous_command() {
     let transcript = pty_transcript(&["echo first\n", "echo second\n", "\u{1b}[A"]);
     assert!(
@@ -329,11 +341,7 @@ fn up_arrow_recalls_the_previous_command() {
 
 #[test]
 fn down_arrow_moves_forward_through_history() {
-    let transcript = pty_transcript(&[
-        "echo first\n",
-        "echo second\n",
-        "\u{1b}[A\u{1b}[A\u{1b}[B",
-    ]);
+    let transcript = pty_transcript(&["echo first\n", "echo second\n", "\u{1b}[A\u{1b}[A\u{1b}[B"]);
     let recalled_first = transcript.rfind("echo first").expect(&transcript);
     let recalled_second = transcript.rfind("echo second").expect(&transcript);
     assert!(
@@ -345,10 +353,7 @@ fn down_arrow_moves_forward_through_history() {
 #[test]
 fn a_recalled_command_runs_when_enter_is_pressed() {
     let transcript = pty_transcript(&["echo hello\n", "\u{1b}[A\n"]);
-    assert!(
-        transcript.matches("hello").count() >= 4,
-        "{transcript:?}"
-    );
+    assert!(transcript.matches("hello").count() >= 4, "{transcript:?}");
 }
 
 #[test]
