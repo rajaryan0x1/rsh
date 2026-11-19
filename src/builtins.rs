@@ -53,6 +53,11 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
 
         "history" => {
             match args.get(1).map(String::as_str) {
+                Some("-w") => {
+                    if let Some(path) = args.get(2) {
+                        crate::history::write_file(path);
+                    }
+                }
                 Some("-r") => {
                     if let Some(path) = args.get(2) {
                         crate::history::read_file(path);

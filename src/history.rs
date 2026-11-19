@@ -25,6 +25,18 @@ pub(crate) fn take_for_readline() -> Vec<String> {
     lines
 }
 
+pub(crate) fn write_file(path: &str) {
+    let history = HISTORY.lock().unwrap();
+    let mut body = history.entries.join("\n");
+    if !history.entries.is_empty() {
+        body.push('\n');
+    }
+    drop(history);
+    if fs::write(path, body).is_err() {
+        println!("history: {path}: cannot write");
+    }
+}
+
 pub(crate) fn read_file(path: &str) {
     let Ok(text) = fs::read_to_string(path) else {
         println!("history: {path}: cannot read");
