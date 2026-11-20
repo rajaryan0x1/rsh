@@ -319,6 +319,20 @@ fn history_lists_every_command_including_itself() {
 }
 
 #[test]
+fn history_appends_only_new_commands_to_a_file() {
+    let shell = Shell::new();
+    fs::write(shell.dir.join("hist"), "echo kept\n").unwrap();
+    let output =
+        shell.run("echo one\necho two\nhistory -a hist\necho three\nhistory -a hist\nexit\n");
+    assert_eq!(output.stdout, b"one\ntwo\nthree\n");
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        shell.read("hist"),
+        "echo kept\necho one\necho two\nhistory -a hist\necho three\nhistory -a hist\n"
+    );
+}
+
+#[test]
 fn history_writes_commands_to_a_file() {
     let shell = Shell::new();
     let output = shell.run("echo one\necho two\nhistory -w hist\nexit\n");
