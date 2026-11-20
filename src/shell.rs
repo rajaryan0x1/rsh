@@ -18,6 +18,9 @@ pub(crate) fn run() {
     rl.bind_sequence(KeyEvent(KeyCode::Up, Modifiers::NONE), Cmd::PreviousHistory);
     rl.bind_sequence(KeyEvent(KeyCode::Down, Modifiers::NONE), Cmd::NextHistory);
     rl.bind_sequence(KeyEvent(KeyCode::Enter, Modifiers::NONE), Cmd::AcceptLine);
+    for entry in crate::history::load_startup() {
+        rl.add_history_entry(entry).unwrap();
+    }
 
     loop {
         // Finished jobs are reported after the previous command and before this prompt.

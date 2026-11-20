@@ -9,6 +9,7 @@ static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 struct Shell {
     dir: PathBuf,
+    histfile: Option<PathBuf>,
 }
 
 impl Shell {
@@ -19,19 +20,32 @@ impl Shell {
             NEXT_ID.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&dir).unwrap();
-        Self { dir }
+        Self {
+            dir,
+            histfile: None,
+        }
+    }
+
+    fn with_histfile(mut self, path: PathBuf) -> Self {
+        self.histfile = Some(path);
+        self
     }
 
     fn run(&self, input: &str) -> Output {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_rsh"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_rsh"));
+        command
             .current_dir(&self.dir)
             .env("PATH", format!("{}:/usr/bin:/bin", self.dir.display()))
             .env("HOME", &self.dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
+            .stderr(Stdio::piped());
+        if let Some(path) = &self.histfile {
+            command.env("HISTFILE", path);
+        } else {
+            command.env_remove("HISTFILE");
+        }
+        let mut child = command.spawn().unwrap();
         child
             .stdin
             .take()
@@ -315,6 +329,20 @@ fn history_lists_every_command_including_itself() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("one\ntwo\n"));
     assert!(stdout.contains("    1  echo one\n    2  echo two\n    3  history\n"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn history_is_loaded_from_histfile_on_startup() {
+    let shell = Shell::new();
+    let path = shell.dir.join("hist");
+    fs::write(&path, "echo loaded\necho also\n").unwrap();
+    let shell = shell.with_histfile(path);
+    let output = shell.run("history\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "    1  echo loaded\n    2  echo also\n    3  history\n"
+    );
     assert!(output.stderr.is_empty());
 }
 

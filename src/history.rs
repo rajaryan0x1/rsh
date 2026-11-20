@@ -1,3 +1,4 @@
+use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::sync::Mutex;
@@ -15,6 +16,34 @@ static HISTORY: Mutex<History> = Mutex::new(History {
     synced: 0,
     written: 0,
 });
+
+fn histfile_path() -> Option<String> {
+    let path = env::var("HISTFILE").ok()?;
+    if path.is_empty() || path == "/dev/null" {
+        None
+    } else {
+        Some(path)
+    }
+}
+
+pub(crate) fn load_startup() -> Vec<String> {
+    let Some(path) = histfile_path() else {
+        return Vec::new();
+    };
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let lines: Vec<String> = text
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    let mut history = HISTORY.lock().unwrap();
+    history.entries.extend(lines.iter().cloned());
+    history.synced = history.entries.len();
+    history.written = history.entries.len();
+    lines
+}
 
 pub(crate) fn record(command: &str) {
     let mut history = HISTORY.lock().unwrap();
