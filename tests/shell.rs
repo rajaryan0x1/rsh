@@ -333,6 +333,20 @@ fn history_lists_every_command_including_itself() {
 }
 
 #[test]
+fn history_appends_new_commands_to_histfile_on_exit() {
+    let shell = Shell::new();
+    let path = shell.dir.join("hist");
+    fs::write(&path, "echo original\n").unwrap();
+    let shell = shell.with_histfile(path);
+    let output = shell.run("echo one\necho sneaky >> hist\nhistory\nexit\n");
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        shell.read("hist"),
+        "echo original\nsneaky\necho one\necho sneaky >> hist\nhistory\nexit\n"
+    );
+}
+
+#[test]
 fn history_is_written_to_histfile_on_exit() {
     let shell = Shell::new();
     let path = shell.dir.join("hist");

@@ -47,7 +47,7 @@ pub(crate) fn load_startup() -> Vec<String> {
 
 pub(crate) fn save_on_exit() {
     if let Some(path) = histfile_path() {
-        write_file(&path);
+        append_file(&path);
     }
 }
 
