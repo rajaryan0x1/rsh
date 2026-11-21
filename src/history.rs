@@ -45,6 +45,12 @@ pub(crate) fn load_startup() -> Vec<String> {
     lines
 }
 
+pub(crate) fn save_on_exit() {
+    if let Some(path) = histfile_path() {
+        write_file(&path);
+    }
+}
+
 pub(crate) fn record(command: &str) {
     let mut history = HISTORY.lock().unwrap();
     history.entries.push(command.to_string());

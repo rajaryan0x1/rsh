@@ -35,6 +35,7 @@ pub(crate) fn run() {
 
             Err(ReadlineError::Eof) => {
                 println!();
+                crate::history::save_on_exit();
                 crate::jobs::shutdown();
                 break;
             }

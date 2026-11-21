@@ -10,6 +10,7 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
     match args[0].as_str() {
         "exit" => {
             if args.len() == 1 || (args.len() == 2 && args[1] == "0") {
+                crate::history::save_on_exit();
                 crate::jobs::shutdown();
                 std::process::exit(0);
             }

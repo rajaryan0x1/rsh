@@ -333,6 +333,17 @@ fn history_lists_every_command_including_itself() {
 }
 
 #[test]
+fn history_is_written_to_histfile_on_exit() {
+    let shell = Shell::new();
+    let path = shell.dir.join("hist");
+    fs::write(&path, "").unwrap();
+    let shell = shell.with_histfile(path);
+    let output = shell.run("echo one\necho two\nhistory\nexit\n");
+    assert!(output.stderr.is_empty());
+    assert_eq!(shell.read("hist"), "echo one\necho two\nhistory\nexit\n");
+}
+
+#[test]
 fn history_is_loaded_from_histfile_on_startup() {
     let shell = Shell::new();
     let path = shell.dir.join("hist");
