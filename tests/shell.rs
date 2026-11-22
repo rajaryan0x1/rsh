@@ -312,6 +312,17 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn declare_reports_a_missing_variable() {
+    let shell = Shell::new();
+    let output = shell.run("declare -p missing_variable_7\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "declare: missing_variable_7: not found\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn declare_is_a_shell_builtin() {
     let shell = Shell::new();
     let output = shell.run("type declare\nexit\n");
