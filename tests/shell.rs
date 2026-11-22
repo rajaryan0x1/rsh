@@ -312,6 +312,18 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn declare_stores_and_replaces_shell_variables() {
+    let shell = Shell::new();
+    let output =
+        shell.run("declare FOO=bar\ndeclare -p FOO\ndeclare FOO=baz\ndeclare -p FOO\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "declare -- FOO=\"bar\"\ndeclare -- FOO=\"baz\"\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn declare_reports_a_missing_variable() {
     let shell = Shell::new();
     let output = shell.run("declare -p missing_variable_7\nexit\n");
