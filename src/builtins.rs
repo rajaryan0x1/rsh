@@ -2,8 +2,8 @@ use std::env;
 
 use crate::executable::find_exe;
 
-pub(crate) const BUILTINS: [&str; 8] = [
-    "type", "echo", "exit", "pwd", "cd", "complete", "jobs", "history",
+pub(crate) const BUILTINS: [&str; 9] = [
+    "type", "echo", "exit", "pwd", "cd", "complete", "jobs", "history", "declare",
 ];
 
 pub(crate) fn execute_builtin(args: &[String]) -> bool {
@@ -49,6 +49,11 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
 
         "jobs" => {
             crate::jobs::list();
+            true
+        }
+
+        "declare" => {
+            crate::variables::execute(&args[1..]);
             true
         }
 

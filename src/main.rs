@@ -8,6 +8,7 @@ mod parser;
 mod programmable;
 mod redirection;
 mod shell;
+mod variables;
 
 fn main() {
     shell::run();
