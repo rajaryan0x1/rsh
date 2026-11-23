@@ -6,7 +6,7 @@ pub(crate) const BUILTINS: [&str; 9] = [
     "type", "echo", "exit", "pwd", "cd", "complete", "jobs", "history", "declare",
 ];
 
-pub(crate) fn execute_builtin(args: &[String]) -> bool {
+pub(crate) fn execute_builtin(args: &[String]) -> Option<i32> {
     match args[0].as_str() {
         "exit" => {
             if args.len() == 1 || (args.len() == 2 && args[1] == "0") {
@@ -15,17 +15,17 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
                 std::process::exit(0);
             }
 
-            true
+            Some(0)
         }
 
         "echo" => {
             println!("{}", args[1..].join(" "));
-            true
+            Some(0)
         }
 
         "pwd" => {
             println!("{}", env::current_dir().unwrap().display());
-            true
+            Some(0)
         }
 
         "cd" => {
@@ -37,24 +37,25 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
 
             if let Err(_) = env::set_current_dir(&path) {
                 println!("cd: {}: No such file or directory", path);
+                return Some(1);
             }
 
-            true
+            Some(0)
         }
 
         "complete" => {
             crate::programmable::execute_complete(&args[1..]);
-            true
+            Some(0)
         }
 
         "jobs" => {
             crate::jobs::list();
-            true
+            Some(0)
         }
 
         "declare" => {
             crate::variables::execute(&args[1..]);
-            true
+            Some(0)
         }
 
         "history" => {
@@ -80,12 +81,12 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
                 }
                 None => crate::history::list(None),
             }
-            true
+            Some(0)
         }
 
         "type" => {
             if args.len() != 2 {
-                return true;
+                return Some(0);
             }
 
             let cmd = args[1].as_str();
@@ -96,11 +97,12 @@ pub(crate) fn execute_builtin(args: &[String]) -> bool {
                 println!("{cmd} is {}", path.display());
             } else {
                 println!("{cmd}: not found");
+                return Some(1);
             }
 
-            true
+            Some(0)
         }
 
-        _ => false,
+        _ => None,
     }
 }

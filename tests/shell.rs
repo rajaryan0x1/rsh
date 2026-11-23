@@ -776,6 +776,19 @@ else:
 }
 
 #[test]
+fn and_and_or_follow_the_previous_status() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "false || echo from-or\ntrue && echo from-and\ntrue || echo skipped-or\nfalse && echo skipped-and\necho left | cat && echo right\nfalse && echo no\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "from-or\nfrom-and\nleft\nright\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn input_redirection_feeds_a_file_to_stdin() {
     let shell = Shell::new();
     fs::write(shell.dir.join("note"), "hello from the file\n").unwrap();

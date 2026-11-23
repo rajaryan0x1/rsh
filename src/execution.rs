@@ -5,14 +5,31 @@ use std::process::Command;
 
 use crate::builtins::{BUILTINS, execute_builtin};
 use crate::executable::find_exe;
-use crate::parser::ParsedCommand;
+use crate::parser::{CommandList, ListOp, ParsedCommand};
 use crate::redirection::{
     apply_child_redirections, configure_external_redirection, with_builtin_redirection,
 };
 
 const SIGPIPE: i32 = 13;
 
-pub(crate) fn execute(commands: &[ParsedCommand], background: bool, command_text: &str) {
+pub(crate) fn run_list(list: &CommandList, background: bool, command_text: &str) -> i32 {
+    if background && list.rest.is_empty() {
+        return execute(&list.first, true, command_text);
+    }
+    let mut status = execute(&list.first, false, command_text);
+    for (operator, pipeline) in &list.rest {
+        let run = match operator {
+            ListOp::And => status == 0,
+            ListOp::Or => status != 0,
+        };
+        if run {
+            status = execute(pipeline, false, command_text);
+        }
+    }
+    status
+}
+
+pub(crate) fn execute(commands: &[ParsedCommand], background: bool, command_text: &str) -> i32 {
     if background
         && let [command] = commands
         && command
@@ -21,43 +38,51 @@ pub(crate) fn execute(commands: &[ParsedCommand], background: bool, command_text
             .is_some_and(|program| !BUILTINS.contains(&program.as_str()))
     {
         crate::jobs::start(command, command_text);
-        return;
+        return 0;
     }
 
     match commands {
-        [] => {}
+        [] => 0,
         [command] => execute_command(command),
         commands => execute_pipeline(commands),
     }
 }
 
-fn execute_command(parts: &ParsedCommand) {
+fn execute_command(parts: &ParsedCommand) -> i32 {
     let Some(cmd) = parts.args.first() else {
-        return;
+        return 0;
     };
 
     if missing_stdin(parts) {
-        return;
+        return 1;
     }
 
     if BUILTINS.contains(&cmd.as_str()) {
+        let mut status = 0;
         with_builtin_redirection(parts, || {
-            execute_builtin(&parts.args);
+            status = execute_builtin(&parts.args).unwrap_or(0);
         });
-        return;
+        return status;
     }
 
     if find_exe(cmd).is_some() {
         let mut command = Command::new(cmd);
         command.args(parts.args.iter().skip(1));
         configure_external_redirection(&mut command, parts);
-        command.status().expect("failed to execute the command");
+        match command.status() {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(_) => {
+                println!("{cmd}: command not found");
+                127
+            }
+        }
     } else {
         println!("{cmd}: command not found");
+        127
     }
 }
 
-fn execute_pipeline(commands: &[ParsedCommand]) {
+fn execute_pipeline(commands: &[ParsedCommand]) -> i32 {
     // Flush before forking so buffered output is not copied into every child.
     let _ = io::stdout().flush();
     let _ = io::stderr().flush();
@@ -90,9 +115,11 @@ fn execute_pipeline(commands: &[ParsedCommand]) {
         children.push(pid);
     }
 
+    let mut status = 0;
     for pid in children {
-        wait_for(pid);
+        status = wait_for(pid);
     }
+    status
 }
 
 fn run_pipeline_child(
@@ -138,8 +165,8 @@ fn run_command(command: &ParsedCommand) -> ! {
     }
 
     if BUILTINS.contains(&cmd.as_str()) {
-        execute_builtin(&command.args);
-        exit_child(0);
+        let status = execute_builtin(&command.args).unwrap_or(0);
+        exit_child(status);
     }
 
     if find_exe(cmd).is_none() {
@@ -180,17 +207,21 @@ fn create_pipe() -> (i32, i32) {
     (fds[0], fds[1])
 }
 
-fn wait_for(pid: i32) {
+fn wait_for(pid: i32) -> i32 {
     loop {
         let mut status = 0;
         let result = unsafe { waitpid(pid, &mut status, 0) };
 
         if result == pid {
-            break;
+            return if status & 0x7f == 0 {
+                (status >> 8) & 0xff
+            } else {
+                128 + (status & 0x7f)
+            };
         }
 
         if result == -1 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-            break;
+            return 1;
         }
     }
 }

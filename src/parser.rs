@@ -39,6 +39,107 @@ pub(crate) fn split_background(input: &str) -> (&str, bool) {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ListOp {
+    And,
+    Or,
+}
+
+pub(crate) struct CommandList {
+    pub(crate) first: Vec<ParsedCommand>,
+    pub(crate) rest: Vec<(ListOp, Vec<ParsedCommand>)>,
+}
+
+pub(crate) fn parse_list(input: &str) -> Result<CommandList, &'static str> {
+    let mut segments = split_list(input)?.into_iter();
+    let (_, first_text) = segments.next().unwrap();
+    let first = parse_pipeline(first_text)?;
+    let mut rest = Vec::new();
+    for (operator, text) in segments {
+        let Some(operator) = operator else {
+            continue;
+        };
+        rest.push((operator, parse_pipeline(text)?));
+    }
+    Ok(CommandList { first, rest })
+}
+
+fn split_list(input: &str) -> Result<Vec<(Option<ListOp>, &str)>, &'static str> {
+    let chars: Vec<(usize, char)> = input.char_indices().collect();
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut pending = None;
+    let mut in_single_quotes = false;
+    let mut in_double_quotes = false;
+    let mut escaped = false;
+    let mut index = 0;
+
+    while index < chars.len() {
+        let (byte, character) = chars[index];
+        if escaped {
+            escaped = false;
+            index += 1;
+            continue;
+        }
+
+        let operator = match character {
+            '\\' if !in_single_quotes => {
+                escaped = true;
+                None
+            }
+            '\'' if !in_double_quotes => {
+                in_single_quotes = !in_single_quotes;
+                None
+            }
+            '"' if !in_single_quotes => {
+                in_double_quotes = !in_double_quotes;
+                None
+            }
+            '&' | '|' if !in_single_quotes && !in_double_quotes => {
+                let next = chars.get(index + 1).map(|(_, character)| *character);
+                if character == '&' && next == Some('&') {
+                    Some(ListOp::And)
+                } else if character == '|' && next == Some('|') {
+                    Some(ListOp::Or)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(operator) = operator {
+            let segment = &input[start..byte];
+            if segment.trim().is_empty() {
+                return Err(operator_error(operator));
+            }
+            segments.push((pending, segment));
+            pending = Some(operator);
+            start = chars[index + 1].0 + chars[index + 1].1.len_utf8();
+            index += 2;
+            continue;
+        }
+
+        index += 1;
+    }
+
+    let segment = &input[start..];
+    if segment.trim().is_empty()
+        && let Some(operator) = pending
+    {
+        return Err(operator_error(operator));
+    }
+    segments.push((pending, segment));
+    Ok(segments)
+}
+
+fn operator_error(operator: ListOp) -> &'static str {
+    match operator {
+        ListOp::And => "syntax error near unexpected token '&&'",
+        ListOp::Or => "syntax error near unexpected token '||'",
+    }
+}
+
 pub(crate) fn parse_pipeline(input: &str) -> Result<Vec<ParsedCommand>, &'static str> {
     let segments = split_pipeline(input);
 

@@ -2,8 +2,8 @@ use rustyline::error::ReadlineError;
 use rustyline::{Cmd, CompletionType, Config, Editor, KeyCode, KeyEvent, Modifiers};
 
 use crate::completion::RshHelper;
-use crate::execution::execute;
-use crate::parser::{parse_pipeline, split_background};
+use crate::execution::run_list;
+use crate::parser::{parse_list, split_background};
 
 pub(crate) fn run() {
     // List mode: first TAB beeps when there are multiple matches,
@@ -56,14 +56,14 @@ pub(crate) fn run() {
         rl.add_history_entry(command).unwrap();
 
         let (command_text, background) = split_background(command);
-        let commands = match parse_pipeline(command_text) {
-            Ok(commands) => commands,
+        let list = match parse_list(command_text) {
+            Ok(list) => list,
             Err(message) => {
                 eprintln!("rsh: {message}");
                 continue;
             }
         };
-        execute(&commands, background, command_text);
+        run_list(&list, background, command_text);
         for entry in crate::history::take_for_readline() {
             rl.add_history_entry(entry).unwrap();
         }
