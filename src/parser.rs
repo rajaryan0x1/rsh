@@ -179,8 +179,22 @@ fn split_pipeline(input: &str) -> Vec<&str> {
     segments
 }
 
-fn append_parameter(name: &str, current: &mut String, word_started: &mut bool) {
+fn contains_glob(text: &str) -> bool {
+    text.chars()
+        .any(|character| matches!(character, '*' | '?' | '['))
+}
+
+fn append_parameter(
+    name: &str,
+    current: &mut String,
+    word_started: &mut bool,
+    glob: &mut bool,
+    quoted: bool,
+) {
     if let Some(value) = crate::variables::get(name).filter(|value| !value.is_empty()) {
+        if !quoted && contains_glob(&value) {
+            *glob = true;
+        }
         current.push_str(&value);
         *word_started = true;
     }
@@ -190,6 +204,8 @@ fn expand_dollar(
     chars: &mut std::iter::Peekable<std::str::Chars>,
     current: &mut String,
     word_started: &mut bool,
+    glob: &mut bool,
+    quoted: bool,
 ) {
     if chars.peek() == Some(&'{') {
         chars.next();
@@ -203,7 +219,7 @@ fn expand_dollar(
             name.push(character);
         }
         if closed && crate::variables::is_valid_identifier(&name) {
-            append_parameter(&name, current, word_started);
+            append_parameter(&name, current, word_started, glob, quoted);
         } else {
             current.push_str("${");
             current.push_str(&name);
@@ -235,14 +251,28 @@ fn expand_dollar(
         return;
     }
 
-    append_parameter(&name, current, word_started);
+    append_parameter(&name, current, word_started, glob, quoted);
+}
+
+struct RawWord {
+    text: String,
+    glob: bool,
+}
+
+fn finish_word(words: &mut Vec<RawWord>, current: &mut String, glob: &mut bool) {
+    words.push(RawWord {
+        text: std::mem::take(current),
+        glob: *glob,
+    });
+    *glob = false;
 }
 
 fn insert_captured(
     text: &str,
     quoted: bool,
-    parts: &mut Vec<String>,
+    words: &mut Vec<RawWord>,
     current: &mut String,
+    glob: &mut bool,
     word_started: &mut bool,
 ) {
     let text = text.trim_end_matches(['\n', '\r']);
@@ -262,7 +292,10 @@ fn insert_captured(
 
     for (index, field) in fields.iter().enumerate() {
         if index > 0 {
-            parts.push(std::mem::take(current));
+            finish_word(words, current, glob);
+        }
+        if contains_glob(field) {
+            *glob = true;
         }
         current.push_str(field);
         *word_started = true;
@@ -334,8 +367,9 @@ fn read_backtick(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
 }
 
 pub(crate) fn parse_command(command: &str) -> ParsedCommand {
-    let mut parts = Vec::new();
+    let mut words = Vec::new();
     let mut current = String::new();
+    let mut current_glob = false;
 
     let mut in_single_quotes = false;
     let mut in_double_quotes = false;
@@ -381,8 +415,9 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
                 insert_captured(
                     &output,
                     in_double_quotes,
-                    &mut parts,
+                    &mut words,
                     &mut current,
+                    &mut current_glob,
                     &mut word_started,
                 );
             }
@@ -395,23 +430,33 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
                     insert_captured(
                         &output,
                         in_double_quotes,
-                        &mut parts,
+                        &mut words,
                         &mut current,
+                        &mut current_glob,
                         &mut word_started,
                     );
                 } else {
-                    expand_dollar(&mut chars, &mut current, &mut word_started);
+                    expand_dollar(
+                        &mut chars,
+                        &mut current,
+                        &mut word_started,
+                        &mut current_glob,
+                        in_double_quotes,
+                    );
                 }
             }
 
             c if c.is_whitespace() && !in_single_quotes && !in_double_quotes => {
                 if word_started {
-                    parts.push(std::mem::take(&mut current));
+                    finish_word(&mut words, &mut current, &mut current_glob);
                     word_started = false;
                 }
             }
 
             _ => {
+                if !in_single_quotes && !in_double_quotes && matches!(c, '*' | '?' | '[') {
+                    current_glob = true;
+                }
                 current.push(c);
                 word_started = true;
             }
@@ -424,8 +469,10 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
     }
 
     if word_started {
-        parts.push(current);
+        finish_word(&mut words, &mut current, &mut current_glob);
     }
+
+    let parts = expand_globs(words);
 
     let mut args = Vec::new();
     let mut stdin_file = None;
@@ -501,6 +548,144 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
         stderr_file,
         stderr_append,
     }
+}
+
+fn expand_globs(words: Vec<RawWord>) -> Vec<String> {
+    let mut parts = Vec::new();
+    for word in words {
+        if word.glob {
+            let matches = glob_paths(&word.text);
+            if matches.is_empty() {
+                parts.push(word.text);
+            } else {
+                parts.extend(matches);
+            }
+        } else {
+            parts.push(word.text);
+        }
+    }
+    parts
+}
+
+fn glob_paths(pattern: &str) -> Vec<String> {
+    let absolute = pattern.starts_with('/');
+    let components: Vec<&str> = pattern
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .collect();
+    if components.is_empty() {
+        return Vec::new();
+    }
+
+    let mut paths = vec![if absolute {
+        "/".to_string()
+    } else {
+        String::new()
+    }];
+    for component in components {
+        let mut next = Vec::new();
+        for prefix in &paths {
+            if !contains_glob(component) {
+                next.push(join_path(prefix, component));
+                continue;
+            }
+            let directory = if prefix.is_empty() {
+                std::path::Path::new(".")
+            } else {
+                std::path::Path::new(prefix)
+            };
+            let Ok(entries) = std::fs::read_dir(directory) else {
+                continue;
+            };
+            let mut names: Vec<String> = entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            for name in names {
+                if name.starts_with('.') && !component.starts_with('.') {
+                    continue;
+                }
+                if glob_match(component, &name) {
+                    next.push(join_path(prefix, &name));
+                }
+            }
+        }
+        paths = next;
+        if paths.is_empty() {
+            return Vec::new();
+        }
+    }
+
+    paths.retain(|path| std::path::Path::new(path).exists());
+    paths.sort();
+    paths
+}
+
+fn join_path(prefix: &str, name: &str) -> String {
+    if prefix.is_empty() {
+        name.to_string()
+    } else if prefix == "/" {
+        format!("/{name}")
+    } else {
+        format!("{prefix}/{name}")
+    }
+}
+
+fn glob_match(pattern: &str, name: &str) -> bool {
+    glob_match_chars(
+        &pattern.chars().collect::<Vec<_>>(),
+        &name.chars().collect::<Vec<_>>(),
+    )
+}
+
+fn glob_match_chars(pattern: &[char], name: &[char]) -> bool {
+    match pattern.first() {
+        None => name.is_empty(),
+        Some('*') => {
+            glob_match_chars(&pattern[1..], name)
+                || (!name.is_empty() && glob_match_chars(pattern, &name[1..]))
+        }
+        Some('?') => !name.is_empty() && glob_match_chars(&pattern[1..], &name[1..]),
+        Some('[') => {
+            let Some(end) = pattern.iter().position(|character| *character == ']') else {
+                return name.first() == Some(&'[') && glob_match_chars(&pattern[1..], &name[1..]);
+            };
+            if name.is_empty() {
+                return false;
+            }
+            let mut class = &pattern[1..end];
+            let negated = matches!(class.first().copied(), Some('!' | '^'));
+            if negated {
+                class = &class[1..];
+            }
+            if class_contains(class, name[0]) == negated {
+                return false;
+            }
+            glob_match_chars(&pattern[end + 1..], &name[1..])
+        }
+        Some(character) => {
+            name.first() == Some(character) && glob_match_chars(&pattern[1..], &name[1..])
+        }
+    }
+}
+
+fn class_contains(class: &[char], candidate: char) -> bool {
+    let mut index = 0;
+    while index < class.len() {
+        if index + 2 < class.len() && class[index + 1] == '-' {
+            if candidate >= class[index] && candidate <= class[index + 2] {
+                return true;
+            }
+            index += 3;
+        } else {
+            if class[index] == candidate {
+                return true;
+            }
+            index += 1;
+        }
+    }
+    false
 }
 
 #[cfg(test)]

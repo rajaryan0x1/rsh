@@ -776,6 +776,20 @@ else:
 }
 
 #[test]
+fn globs_expand_unquoted_names_and_leave_quoted_patterns() {
+    let shell = Shell::new();
+    fs::write(shell.dir.join("a.txt"), "").unwrap();
+    fs::write(shell.dir.join("b.txt"), "").unwrap();
+    fs::write(shell.dir.join("c.rs"), "").unwrap();
+    let output = shell.run("echo *.txt\necho \"*.txt\"\necho *.missing\nexit\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "a.txt b.txt\n*.txt\n*.missing\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn command_substitution_inserts_command_output() {
     let shell = Shell::new();
     let output = shell.run(
