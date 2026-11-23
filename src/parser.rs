@@ -1,5 +1,6 @@
 pub(crate) struct ParsedCommand {
     pub(crate) args: Vec<String>,
+    pub(crate) stdin_file: Option<String>,
     pub(crate) stdout_file: Option<String>,
     pub(crate) stdout_append: bool,
     pub(crate) stderr_file: Option<String>,
@@ -206,6 +207,7 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
     }
 
     let mut args = Vec::new();
+    let mut stdin_file = None;
     let mut stdout_file = None;
     let mut stdout_append = false;
     let mut stderr_file = None;
@@ -215,6 +217,14 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
 
     while i < parts.len() {
         match parts[i].as_str() {
+            "<" | "0<" => {
+                if i + 1 < parts.len() {
+                    stdin_file = Some(parts[i + 1].clone());
+                    i += 2;
+                    continue;
+                }
+            }
+
             // stdout overwrite
             ">" | "1>" => {
                 if i + 1 < parts.len() {
@@ -264,6 +274,7 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
 
     ParsedCommand {
         args,
+        stdin_file,
         stdout_file,
         stdout_append,
         stderr_file,

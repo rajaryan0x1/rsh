@@ -776,6 +776,15 @@ else:
 }
 
 #[test]
+fn input_redirection_feeds_a_file_to_stdin() {
+    let shell = Shell::new();
+    fs::write(shell.dir.join("note"), "hello from the file\n").unwrap();
+    let output = shell.run("cat < note\nexit\n");
+    assert_eq!(output.stdout, b"hello from the file\n");
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn executable_lookup_checks_permissions_and_searches_path() {
     let shell = Shell::new();
     let executable = shell.dir.join("example");

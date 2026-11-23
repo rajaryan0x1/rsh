@@ -1,4 +1,5 @@
 use std::ffi::{CString, c_char, c_void};
+use std::fs::File;
 use std::io::{self, Write};
 use std::process::Command;
 
@@ -34,6 +35,10 @@ fn execute_command(parts: &ParsedCommand) {
     let Some(cmd) = parts.args.first() else {
         return;
     };
+
+    if missing_stdin(parts) {
+        return;
+    }
 
     if BUILTINS.contains(&cmd.as_str()) {
         with_builtin_redirection(parts, || {
@@ -128,6 +133,10 @@ fn run_command(command: &ParsedCommand) -> ! {
         exit_child(0);
     };
 
+    if missing_stdin(command) {
+        exit_child(1);
+    }
+
     if BUILTINS.contains(&cmd.as_str()) {
         execute_builtin(&command.args);
         exit_child(0);
@@ -149,6 +158,16 @@ fn run_command(command: &ParsedCommand) -> ! {
     unsafe { execvp(argv[0], argv.as_ptr()) };
     println!("{cmd}: command not found");
     exit_child(127);
+}
+
+fn missing_stdin(parts: &ParsedCommand) -> bool {
+    if let Some(path) = &parts.stdin_file
+        && File::open(path).is_err()
+    {
+        println!("rsh: {path}: No such file or directory");
+        return true;
+    }
+    false
 }
 
 fn create_pipe() -> (i32, i32) {

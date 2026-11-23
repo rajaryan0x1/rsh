@@ -9,6 +9,17 @@ pub(crate) fn with_builtin_redirection<F>(parts: &ParsedCommand, func: F)
 where
     F: FnOnce(),
 {
+    if let Some(input_file) = &parts.stdin_file {
+        redirect_stdin(input_file, || redirect_output(parts, func));
+    } else {
+        redirect_output(parts, func);
+    }
+}
+
+fn redirect_output<F>(parts: &ParsedCommand, func: F)
+where
+    F: FnOnce(),
+{
     if let Some(output_file) = &parts.stdout_file {
         redirect_stdout(output_file, parts.stdout_append, || {
             if let Some(error_file) = &parts.stderr_file {
@@ -25,12 +36,23 @@ where
 }
 
 pub(crate) fn apply_child_redirections(parts: &ParsedCommand) {
+    if let Some(input_file) = &parts.stdin_file {
+        duplicate_read_onto(input_file, 0);
+    }
+
     if let Some(output_file) = &parts.stdout_file {
         duplicate_file_onto(output_file, parts.stdout_append, 1);
     }
 
     if let Some(error_file) = &parts.stderr_file {
         duplicate_file_onto(error_file, parts.stderr_append, 2);
+    }
+}
+
+fn duplicate_read_onto(path: &str, fd: i32) {
+    let file = File::open(path).expect("failed to open input file");
+    if unsafe { dup2(file.as_raw_fd(), fd) } == -1 {
+        panic!("failed to redirect file descriptor {fd}");
     }
 }
 
@@ -43,6 +65,11 @@ fn duplicate_file_onto(path: &str, append: bool, fd: i32) {
 }
 
 pub(crate) fn configure_external_redirection(command: &mut Command, parts: &ParsedCommand) {
+    if let Some(input_file) = &parts.stdin_file {
+        let file = File::open(input_file).expect("failed to open input file");
+        command.stdin(Stdio::from(file));
+    }
+
     if let Some(output_file) = &parts.stdout_file {
         let file = open_file(output_file, parts.stdout_append).expect("failed to open output file");
         command.stdout(Stdio::from(file));
@@ -61,6 +88,25 @@ fn open_file(path: &str, append: bool) -> io::Result<File> {
         .append(append)
         .truncate(!append)
         .open(path)
+}
+
+fn redirect_stdin<F>(input_file: &str, func: F)
+where
+    F: FnOnce(),
+{
+    let file = File::open(input_file).expect("failed to open input file");
+    let saved_stdin = unsafe { dup(0) };
+    if saved_stdin == -1 {
+        panic!("failed to duplicate stdin");
+    }
+    if unsafe { dup2(file.as_raw_fd(), 0) } == -1 {
+        panic!("failed to redirect stdin");
+    }
+    func();
+    if unsafe { dup2(saved_stdin, 0) } == -1 {
+        panic!("failed to restore stdin");
+    }
+    unsafe { close(saved_stdin) };
 }
 
 fn redirect_stdout<F>(output_file: &str, append: bool, func: F)
