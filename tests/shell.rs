@@ -312,6 +312,19 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn variables_expand_in_commands() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "declare NAME=bar\ndeclare OTHER=baz\necho $NAME\necho prefix_$OTHER\necho '$NAME'\necho \"hello $NAME\"\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "bar\nprefix_baz\n$NAME\nhello bar\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn declare_rejects_invalid_variable_names() {
     let shell = Shell::new();
     let output = shell.run(

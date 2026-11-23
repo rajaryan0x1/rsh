@@ -77,6 +77,45 @@ fn split_pipeline(input: &str) -> Vec<&str> {
     segments
 }
 
+fn expand_dollar(
+    chars: &mut std::iter::Peekable<std::str::Chars>,
+    current: &mut String,
+    word_started: &mut bool,
+) {
+    let mut name = String::new();
+    while let Some(&character) = chars.peek() {
+        let valid = if name.is_empty() {
+            character.is_ascii_alphabetic() || character == '_'
+        } else {
+            character.is_ascii_alphanumeric() || character == '_'
+        };
+        if !valid {
+            break;
+        }
+        name.push(character);
+        chars.next();
+    }
+
+    if name.is_empty() {
+        current.push('$');
+        *word_started = true;
+        return;
+    }
+
+    match crate::variables::get(&name) {
+        Some(value) if !value.is_empty() => {
+            current.push_str(&value);
+            *word_started = true;
+        }
+        Some(_) => {}
+        None => {
+            current.push('$');
+            current.push_str(&name);
+            *word_started = true;
+        }
+    }
+}
+
 pub(crate) fn parse_command(command: &str) -> ParsedCommand {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -86,7 +125,8 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
     let mut escaped = false;
     let mut word_started = false;
 
-    for c in command.chars() {
+    let mut chars = command.chars().peekable();
+    while let Some(c) = chars.next() {
         if escaped {
             // Inside double quotes, only ", \, $, `, and newline are escaped.
             // A backslash before any other character is kept.
@@ -116,6 +156,10 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
             '"' if !in_single_quotes => {
                 in_double_quotes = !in_double_quotes;
                 word_started = true;
+            }
+
+            '$' if !in_single_quotes => {
+                expand_dollar(&mut chars, &mut current, &mut word_started);
             }
 
             c if c.is_whitespace() && !in_single_quotes && !in_double_quotes => {
