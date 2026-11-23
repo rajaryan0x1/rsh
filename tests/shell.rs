@@ -312,6 +312,19 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn variables_expand_inside_braces() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "declare NAME=bar\ndeclare OTHER=baz\necho prefix_${NAME}_suffix\necho ${OTHER}_tail\necho '${NAME}'\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "prefix_bar_suffix\nbaz_tail\n${NAME}\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn variables_expand_in_commands() {
     let shell = Shell::new();
     let output = shell.run(

@@ -77,11 +77,50 @@ fn split_pipeline(input: &str) -> Vec<&str> {
     segments
 }
 
+fn append_parameter(name: &str, literal: &str, current: &mut String, word_started: &mut bool) {
+    match crate::variables::get(name) {
+        Some(value) if !value.is_empty() => {
+            current.push_str(&value);
+            *word_started = true;
+        }
+        Some(_) => {}
+        None => {
+            current.push_str(literal);
+            *word_started = true;
+        }
+    }
+}
+
 fn expand_dollar(
     chars: &mut std::iter::Peekable<std::str::Chars>,
     current: &mut String,
     word_started: &mut bool,
 ) {
+    if chars.peek() == Some(&'{') {
+        chars.next();
+        let mut name = String::new();
+        let mut closed = false;
+        while let Some(character) = chars.next() {
+            if character == '}' {
+                closed = true;
+                break;
+            }
+            name.push(character);
+        }
+        let literal = if closed {
+            format!("${{{name}}}")
+        } else {
+            format!("${{{name}")
+        };
+        if closed && crate::variables::is_valid_identifier(&name) {
+            append_parameter(&name, &literal, current, word_started);
+        } else {
+            current.push_str(&literal);
+            *word_started = true;
+        }
+        return;
+    }
+
     let mut name = String::new();
     while let Some(&character) = chars.peek() {
         let valid = if name.is_empty() {
@@ -102,18 +141,7 @@ fn expand_dollar(
         return;
     }
 
-    match crate::variables::get(&name) {
-        Some(value) if !value.is_empty() => {
-            current.push_str(&value);
-            *word_started = true;
-        }
-        Some(_) => {}
-        None => {
-            current.push('$');
-            current.push_str(&name);
-            *word_started = true;
-        }
-    }
+    append_parameter(&name, &format!("${name}"), current, word_started);
 }
 
 pub(crate) fn parse_command(command: &str) -> ParsedCommand {
