@@ -77,17 +77,10 @@ fn split_pipeline(input: &str) -> Vec<&str> {
     segments
 }
 
-fn append_parameter(name: &str, literal: &str, current: &mut String, word_started: &mut bool) {
-    match crate::variables::get(name) {
-        Some(value) if !value.is_empty() => {
-            current.push_str(&value);
-            *word_started = true;
-        }
-        Some(_) => {}
-        None => {
-            current.push_str(literal);
-            *word_started = true;
-        }
+fn append_parameter(name: &str, current: &mut String, word_started: &mut bool) {
+    if let Some(value) = crate::variables::get(name).filter(|value| !value.is_empty()) {
+        current.push_str(&value);
+        *word_started = true;
     }
 }
 
@@ -107,15 +100,14 @@ fn expand_dollar(
             }
             name.push(character);
         }
-        let literal = if closed {
-            format!("${{{name}}}")
-        } else {
-            format!("${{{name}")
-        };
         if closed && crate::variables::is_valid_identifier(&name) {
-            append_parameter(&name, &literal, current, word_started);
+            append_parameter(&name, current, word_started);
         } else {
-            current.push_str(&literal);
+            current.push_str("${");
+            current.push_str(&name);
+            if closed {
+                current.push('}');
+            }
             *word_started = true;
         }
         return;
@@ -141,7 +133,7 @@ fn expand_dollar(
         return;
     }
 
-    append_parameter(&name, &format!("${name}"), current, word_started);
+    append_parameter(&name, current, word_started);
 }
 
 pub(crate) fn parse_command(command: &str) -> ParsedCommand {

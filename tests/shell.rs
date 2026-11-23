@@ -312,6 +312,26 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn empty_unquoted_expansions_are_omitted() {
+    let shell = Shell::new();
+    let script = shell.dir.join("args");
+    fs::write(
+        &script,
+        "#!/bin/sh\nprintf '%s\\n' \"$#\"\nprintf '<%s>\\n' \"$@\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let output = shell.run(
+        "declare NAME=bar\ndeclare EMPTY=\nargs ${missing_var_1}_suffix ${NAME} ${missing_var_2} $missing_var_3 $EMPTY\nargs \"$EMPTY\"\necho \"a\" \"\" \"b\"\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "2\n<_suffix>\n<bar>\n1\n<>\na  b\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn variables_expand_inside_braces() {
     let shell = Shell::new();
     let output = shell.run(
