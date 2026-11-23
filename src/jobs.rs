@@ -14,6 +14,7 @@ struct Job {
     command: String,
     child: Child,
     finished: bool,
+    stopped: bool,
 }
 
 static JOBS: Mutex<Vec<Job>> = Mutex::new(Vec::new());
@@ -60,7 +61,82 @@ pub(crate) fn start(command: &ParsedCommand, text: &str) {
         command: text.to_string(),
         child,
         finished: false,
+        stopped: false,
     });
+}
+
+pub(crate) fn adopt(child: Child, text: &str) {
+    let mut jobs = JOBS.lock().expect("job table lock");
+    let number = next_number(&jobs);
+    println!("[{number}]+  Stopped                 {text}");
+    jobs.push(Job {
+        number,
+        seq: NEXT_SEQ.fetch_add(1, Ordering::Relaxed),
+        command: text.to_string(),
+        child,
+        finished: false,
+        stopped: true,
+    });
+}
+
+pub(crate) fn foreground(job_number: Option<u32>) -> i32 {
+    let mut jobs = JOBS.lock().expect("job table lock");
+    let Some(index) = find_job(&jobs, job_number) else {
+        if let Some(number) = job_number {
+            println!("fg: %{number}: no such job");
+        } else {
+            println!("fg: no current job");
+        }
+        return 1;
+    };
+    let mut job = jobs.remove(index);
+    let command = job.command.clone();
+    let pid = job.child.id() as i32;
+    let stopped = job.stopped;
+    drop(jobs);
+
+    println!("{command}");
+    if stopped {
+        unsafe { kill(pid, 18) };
+    }
+    let shell_group = unsafe { getpgrp() };
+    unsafe { tcsetpgrp(0, pid) };
+    let status = job.child.wait();
+    unsafe { tcsetpgrp(0, shell_group) };
+    match status {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(_) => 1,
+    }
+}
+
+pub(crate) fn background(job_number: Option<u32>) -> i32 {
+    let mut jobs = JOBS.lock().expect("job table lock");
+    let Some(index) = find_job(&jobs, job_number) else {
+        if let Some(number) = job_number {
+            println!("bg: %{number}: no such job");
+        } else {
+            println!("bg: no current job");
+        }
+        return 1;
+    };
+    let pid = jobs[index].child.id() as i32;
+    if jobs[index].stopped {
+        unsafe { kill(pid, 18) };
+        jobs[index].stopped = false;
+    }
+    println!("{}", format_job(&jobs[index], &jobs));
+    0
+}
+
+fn find_job(jobs: &[Job], job_number: Option<u32>) -> Option<usize> {
+    match job_number {
+        Some(number) => jobs.iter().position(|job| job.number == number),
+        None => jobs
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, job)| job.seq)
+            .map(|(index, _)| index),
+    }
 }
 
 pub(crate) fn list() {
@@ -107,21 +183,38 @@ fn refresh(job: &mut Job) {
         return;
     }
 
-    match job.child.try_wait() {
-        Ok(Some(_)) | Err(_) => job.finished = true,
-        Ok(None) => {}
+    let mut status = 0;
+    let result = unsafe { waitpid(job.child.id() as i32, &mut status, 1 | 2) };
+    if result > 0 {
+        if status & 0xff == 0x7f {
+            job.stopped = true;
+        } else {
+            job.finished = true;
+            job.stopped = false;
+        }
+        return;
+    }
+
+    if result == -1 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+        job.finished = true;
     }
 }
 
 fn format_job(job: &Job, jobs: &[Job]) -> String {
-    let status = if job.finished { "Done" } else { "Running" };
+    let status = if job.finished {
+        "Done"
+    } else if job.stopped {
+        "Stopped"
+    } else {
+        "Running"
+    };
     let mut line = format!(
         "[{}]{}  {status}                 {}",
         job.number,
         marker(job, jobs),
         job.command
     );
-    if !job.finished {
+    if !job.finished && !job.stopped {
         line.push_str(" &");
     }
     line
@@ -146,4 +239,11 @@ pub(crate) fn shutdown() {
         let _ = job.child.kill();
         let _ = job.child.wait();
     }
+}
+
+unsafe extern "C" {
+    fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+    fn kill(pid: i32, sig: i32) -> i32;
+    fn getpgrp() -> i32;
+    fn tcsetpgrp(fd: i32, pgrp: i32) -> i32;
 }

@@ -191,7 +191,7 @@ fn jobs_reaps_several_finished_jobs_and_updates_markers() {
     let releaser = shell.dir.join("releaser");
     fs::write(
         &releaser,
-        "#!/bin/sh\nprintf 'x\\n' > \"$1\"\nprintf 'x\\n' > \"$2\"\nprintf 'closed\\n'\n",
+        "#!/bin/sh\nprintf 'x\\n' > \"$1\"\nprintf 'x\\n' > \"$2\"\nsleep 0.05\nprintf 'closed\\n'\n",
     )
     .unwrap();
     fs::set_permissions(&releaser, fs::Permissions::from_mode(0o755)).unwrap();
@@ -773,6 +773,24 @@ else:
     let output = command.output().unwrap();
     assert!(output.status.success(), "{output:?}");
     String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn fg_waits_for_the_current_job_and_bg_leaves_it_running() {
+    let shell = Shell::new();
+    let output = shell.run("sleep 0.2 &\nfg\necho after-fg\nsleep 30 &\nbg\njobs\nexit\n");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("sleep 0.2"), "{stdout}");
+    assert!(stdout.contains("after-fg"), "{stdout}");
+    assert!(
+        stdout.contains("[1]+  Running                 sleep 30 &"),
+        "{stdout}"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

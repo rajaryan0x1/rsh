@@ -2,6 +2,7 @@ use std::ffi::{CString, c_char, c_void};
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::unix::io::FromRawFd;
+use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 use crate::builtins::{BUILTINS, execute_builtin};
@@ -83,12 +84,12 @@ pub(crate) fn execute(commands: &[ParsedCommand], background: bool, command_text
 
     match commands {
         [] => 0,
-        [command] => execute_command(command),
+        [command] => execute_command(command, command_text),
         commands => execute_pipeline(commands),
     }
 }
 
-fn execute_command(parts: &ParsedCommand) -> i32 {
+fn execute_command(parts: &ParsedCommand, command_text: &str) -> i32 {
     let Some(cmd) = parts.args.first() else {
         return 0;
     };
@@ -105,21 +106,67 @@ fn execute_command(parts: &ParsedCommand) -> i32 {
         return status;
     }
 
-    if find_exe(cmd).is_some() {
-        let mut command = Command::new(cmd);
-        command.args(parts.args.iter().skip(1));
-        configure_external_redirection(&mut command, parts);
-        match command.status() {
-            Ok(status) => status.code().unwrap_or(1),
-            Err(_) => {
-                println!("{cmd}: command not found");
-                127
-            }
-        }
-    } else {
+    if find_exe(cmd).is_none() {
         println!("{cmd}: command not found");
-        127
+        return 127;
     }
+
+    if stdin_is_tty() {
+        return execute_in_foreground(parts, command_text);
+    }
+
+    let mut command = Command::new(cmd);
+    command.args(parts.args.iter().skip(1));
+    configure_external_redirection(&mut command, parts);
+    match command.status() {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(_) => {
+            println!("{cmd}: command not found");
+            127
+        }
+    }
+}
+
+fn execute_in_foreground(parts: &ParsedCommand, command_text: &str) -> i32 {
+    let program = &parts.args[0];
+    let mut command = Command::new(program);
+    command.args(parts.args.iter().skip(1));
+    command.process_group(0);
+    configure_external_redirection(&mut command, parts);
+    let child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            println!("{program}: command not found");
+            return 127;
+        }
+    };
+    let pid = child.id() as i32;
+    let shell_group = unsafe { getpgrp() };
+    unsafe { tcsetpgrp(0, pid) };
+    let mut raw_status = 0;
+    loop {
+        let result = unsafe { waitpid(pid, &mut raw_status, 2) };
+        if result == pid
+            || (result == -1 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted)
+        {
+            break;
+        }
+    }
+    unsafe { tcsetpgrp(0, shell_group) };
+    if raw_status & 0xff == 0x7f {
+        crate::jobs::adopt(child, command_text);
+        return 148;
+    }
+    std::mem::forget(child);
+    if raw_status & 0x7f == 0 {
+        (raw_status >> 8) & 0xff
+    } else {
+        128 + (raw_status & 0x7f)
+    }
+}
+
+fn stdin_is_tty() -> bool {
+    unsafe { isatty(0) == 1 }
 }
 
 fn execute_pipeline(commands: &[ParsedCommand]) -> i32 {
@@ -281,4 +328,7 @@ unsafe extern "C" {
     fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
     fn signal(signum: i32, handler: *const c_void) -> *const c_void;
     fn _exit(status: i32) -> !;
+    fn getpgrp() -> i32;
+    fn tcsetpgrp(fd: i32, pgrp: i32) -> i32;
+    fn isatty(fd: i32) -> i32;
 }
