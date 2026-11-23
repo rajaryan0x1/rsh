@@ -312,6 +312,23 @@ fn a_background_command_prints_its_job_number_and_pid() {
 }
 
 #[test]
+fn declare_rejects_invalid_variable_names() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "declare _ok=yes\ndeclare 2bad=no\ndeclare bad-name=no\ndeclare -p _ok\ndeclare -p 2bad\ndeclare -p bad-name\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "declare: `2bad=no': not a valid identifier\n\
+         declare: `bad-name=no': not a valid identifier\n\
+         declare -- _ok=\"yes\"\n\
+         declare: 2bad: not found\n\
+         declare: bad-name: not found\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn declare_stores_and_replaces_shell_variables() {
     let shell = Shell::new();
     let output =
