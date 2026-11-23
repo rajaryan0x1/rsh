@@ -1,6 +1,7 @@
 use std::ffi::{CString, c_char, c_void};
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
+use std::os::unix::io::FromRawFd;
 use std::process::Command;
 
 use crate::builtins::{BUILTINS, execute_builtin};
@@ -11,6 +12,45 @@ use crate::redirection::{
 };
 
 const SIGPIPE: i32 = 13;
+
+pub(crate) fn capture(script: &str) -> String {
+    let _ = io::stdout().flush();
+    let _ = io::stderr().flush();
+    let mut fds = [0; 2];
+    if unsafe { pipe(fds.as_mut_ptr()) } == -1 {
+        return String::new();
+    }
+    let pid = unsafe { fork() };
+    if pid == -1 {
+        unsafe {
+            close(fds[0]);
+            close(fds[1]);
+        }
+        return String::new();
+    }
+    if pid == 0 {
+        unsafe {
+            dup2(fds[1], 1);
+            close(fds[0]);
+            close(fds[1]);
+        }
+        let status = match crate::parser::parse_list(script) {
+            Ok(list) => run_list(&list, false, script),
+            Err(message) => {
+                eprintln!("rsh: {message}");
+                2
+            }
+        };
+        exit_child(status);
+    }
+    unsafe { close(fds[1]) };
+    let mut output = Vec::new();
+    let mut pipe_read = unsafe { File::from_raw_fd(fds[0]) };
+    let _ = pipe_read.read_to_end(&mut output);
+    drop(pipe_read);
+    wait_for(pid);
+    String::from_utf8_lossy(&output).into_owned()
+}
 
 pub(crate) fn run_list(list: &CommandList, background: bool, command_text: &str) -> i32 {
     if background && list.rest.is_empty() {

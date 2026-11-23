@@ -238,6 +238,101 @@ fn expand_dollar(
     append_parameter(&name, current, word_started);
 }
 
+fn insert_captured(
+    text: &str,
+    quoted: bool,
+    parts: &mut Vec<String>,
+    current: &mut String,
+    word_started: &mut bool,
+) {
+    let text = text.trim_end_matches(['\n', '\r']);
+    if quoted {
+        current.push_str(text);
+        *word_started = true;
+        return;
+    }
+
+    let fields: Vec<&str> = text
+        .split(|character: char| matches!(character, ' ' | '\t' | '\n' | '\r'))
+        .filter(|field| !field.is_empty())
+        .collect();
+    if fields.is_empty() {
+        return;
+    }
+
+    for (index, field) in fields.iter().enumerate() {
+        if index > 0 {
+            parts.push(std::mem::take(current));
+        }
+        current.push_str(field);
+        *word_started = true;
+    }
+}
+
+fn read_command_substitution(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
+    let mut script = String::new();
+    let mut depth = 1;
+    let mut in_single_quotes = false;
+    let mut in_double_quotes = false;
+    let mut escaped = false;
+    while let Some(character) = chars.next() {
+        if escaped {
+            script.push(character);
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' if !in_single_quotes => {
+                script.push(character);
+                escaped = true;
+            }
+            '\'' if !in_double_quotes => {
+                in_single_quotes = !in_single_quotes;
+                script.push(character);
+            }
+            '"' if !in_single_quotes => {
+                in_double_quotes = !in_double_quotes;
+                script.push(character);
+            }
+            '(' if !in_single_quotes && !in_double_quotes => {
+                depth += 1;
+                script.push(character);
+            }
+            ')' if !in_single_quotes && !in_double_quotes => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+                script.push(character);
+            }
+            _ => script.push(character),
+        }
+    }
+    script
+}
+
+fn read_backtick(chars: &mut std::iter::Peekable<std::str::Chars>) -> String {
+    let mut script = String::new();
+    while let Some(character) = chars.next() {
+        if character == '`' {
+            break;
+        }
+        if character == '\\'
+            && let Some(next) = chars.next()
+        {
+            if matches!(next, '$' | '`' | '\\') {
+                script.push(next);
+            } else {
+                script.push('\\');
+                script.push(next);
+            }
+            continue;
+        }
+        script.push(character);
+    }
+    script
+}
+
 pub(crate) fn parse_command(command: &str) -> ParsedCommand {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -280,8 +375,33 @@ pub(crate) fn parse_command(command: &str) -> ParsedCommand {
                 word_started = true;
             }
 
+            '`' if !in_single_quotes => {
+                let script = read_backtick(&mut chars);
+                let output = crate::execution::capture(&script);
+                insert_captured(
+                    &output,
+                    in_double_quotes,
+                    &mut parts,
+                    &mut current,
+                    &mut word_started,
+                );
+            }
+
             '$' if !in_single_quotes => {
-                expand_dollar(&mut chars, &mut current, &mut word_started);
+                if chars.peek() == Some(&'(') {
+                    chars.next();
+                    let script = read_command_substitution(&mut chars);
+                    let output = crate::execution::capture(&script);
+                    insert_captured(
+                        &output,
+                        in_double_quotes,
+                        &mut parts,
+                        &mut current,
+                        &mut word_started,
+                    );
+                } else {
+                    expand_dollar(&mut chars, &mut current, &mut word_started);
+                }
             }
 
             c if c.is_whitespace() && !in_single_quotes && !in_double_quotes => {

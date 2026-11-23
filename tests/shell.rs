@@ -776,6 +776,19 @@ else:
 }
 
 #[test]
+fn command_substitution_inserts_command_output() {
+    let shell = Shell::new();
+    let output = shell.run(
+        "echo $(echo nested)\necho pre$(echo a b)post\necho \"$(echo a b)\"\necho `echo tick`\necho $(true)\nexit\n",
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "nested\nprea bpost\na b\ntick\n\n"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn and_and_or_follow_the_previous_status() {
     let shell = Shell::new();
     let output = shell.run(
