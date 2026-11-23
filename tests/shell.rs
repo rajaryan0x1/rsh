@@ -776,6 +776,32 @@ else:
 }
 
 #[test]
+fn export_passes_variables_to_child_processes() {
+    let shell = Shell::new();
+    let script = "\
+declare HIDDEN=secret
+sh -c 'echo \"hidden-$HIDDEN\"'
+export NAME=from-export
+sh -c 'echo \"name-$NAME\"'
+export HIDDEN
+sh -c 'echo \"hidden-$HIDDEN\"'
+export
+exit
+";
+    let output = shell.run(script);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("hidden-\n"), "{stdout}");
+    assert!(stdout.contains("name-from-export\n"), "{stdout}");
+    assert!(stdout.contains("hidden-secret\n"), "{stdout}");
+    assert!(stdout.contains("declare -x HIDDEN=\"secret\""), "{stdout}");
+    assert!(
+        stdout.contains("declare -x NAME=\"from-export\""),
+        "{stdout}"
+    );
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn fg_waits_for_the_current_job_and_bg_leaves_it_running() {
     let shell = Shell::new();
     let output = shell.run("sleep 0.2 &\nfg\necho after-fg\nsleep 30 &\nbg\njobs\nexit\n");

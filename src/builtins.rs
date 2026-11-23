@@ -2,8 +2,9 @@ use std::env;
 
 use crate::executable::find_exe;
 
-pub(crate) const BUILTINS: [&str; 11] = [
-    "type", "echo", "exit", "pwd", "cd", "complete", "jobs", "history", "declare", "fg", "bg",
+pub(crate) const BUILTINS: [&str; 12] = [
+    "type", "echo", "exit", "pwd", "cd", "complete", "jobs", "history", "declare", "export", "fg",
+    "bg",
 ];
 
 fn job_number(arg: &str) -> Option<u32> {
@@ -65,10 +66,9 @@ pub(crate) fn execute_builtin(args: &[String]) -> Option<i32> {
             args.get(1).and_then(|arg| job_number(arg)),
         )),
 
-        "declare" => {
-            crate::variables::execute(&args[1..]);
-            Some(0)
-        }
+        "declare" => Some(crate::variables::execute(&args[1..])),
+
+        "export" => Some(crate::variables::execute_export(&args[1..])),
 
         "history" => {
             match args.get(1).map(String::as_str) {
